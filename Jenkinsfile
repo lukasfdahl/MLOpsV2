@@ -15,7 +15,7 @@ pipeline {
         stage("Build Docker Image") {
             steps {
                 echo "Building the Docker container:"
-                sh "docker build -f ${WORKSPACE}/docker/Dockerfile -t mlops-kls-container:${env.BUILD_ID} ."
+                sh "docker build -f docker/DockerFile -t mlops-kls-container:${env.BUILD_ID} ."
             }
         }
 
