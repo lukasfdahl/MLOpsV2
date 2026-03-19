@@ -15,14 +15,14 @@ pipeline {
         stage("Build Docker Image") {
             steps {
                 echo "Building the Docker container:"
-                sh "docker build -f docker/Dockerfile -t mlops-kls-container:${env.BUILD_ID} ."
+                sh "docker build -f ${WORKSPACE}/docker/Dockerfile -t mlops-kls-container:${env.BUILD_ID} ."
             }
         }
 
         stage("Run Unit Tests") {
             steps {
                 echo "Running Pytest inside container"
-                // To mount the data folder and run the unit tests
+                // To mount the data folder and run the unit tests (${WORKSPACE} is the folder for the current build run)
                 sh "docker run --rm -v '${WORKSPACE}/data:/app/data' mlops-kls-container:${env.BUILD_ID}"
             }
         }
