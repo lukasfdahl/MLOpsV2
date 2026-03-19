@@ -3,5 +3,4 @@
 
  made by Lukas, Kapser and Salar
 
-
-Setup a new enviorment and then run setup.sh to setup the project once cloned
+Setup a new enviorment and then run "bash setup.sh" to setup the project once cloned
