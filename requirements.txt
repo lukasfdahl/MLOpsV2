@@ -1,0 +1,7 @@
+torch
+torchvision
+PyYAML
+Pillow
+matplotlib
+mlflow
+torchsummary

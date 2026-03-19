@@ -1,0 +1,28 @@
+# future test script for custom model cnn
+import torch
+from dataloader_sample import get_dataloaders
+from helpers import check_device, show_predictions
+from train import CustomCNN
+
+CHECKPOINT = "custom_model/best_model.pth"
+NUM_CLASSES = 80
+
+device = check_device()
+
+# Load data — only need the val loader
+_, val_loader, _ = get_dataloaders()
+
+# Build model and load saved weights
+model = CustomCNN(num_classes=NUM_CLASSES).to(device)
+ckpt = torch.load(CHECKPOINT, map_location=device)
+model.load_state_dict(ckpt["model_state"])
+print(f"Loaded checkpoint — epoch {ckpt['epoch']}, val_loss={ckpt['val_loss']:.4f}")
+
+# Run inference and save the prediction grid
+show_predictions(
+    model,
+    val_loader,
+    device,
+    num_examples=8,
+    save_path="custom_model/test_predictions.png",
+)
