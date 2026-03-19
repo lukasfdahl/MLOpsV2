@@ -300,8 +300,8 @@ def train_model():
         print("\n" + "=" * 55)
         print("Training complete.")
         print(f"  Best model: epoch {best_epoch}, val_loss={best_val_loss:.4f}")
-        print(f"  Saved → {os.path.join(models_path, "best_model.pth")}")
-        print(f"  Saved → {os.path.join(models_path, "last_model.pth")}")
+        print(f"  Saved → {os.path.join(models_path, 'best_model.pth')}")
+        print(f"  Saved → {os.path.join(models_path, 'last_model.pth')}")
 
         # figures / graphs — log directly to MLflow so they render in the UI
         fig = plot_training_curves(history)
