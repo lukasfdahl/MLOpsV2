@@ -1,6 +1,5 @@
 import train as train
-from helpers import check_device
-import yaml
+from utility.hardware import check_device
 
 # does git work?
 def run_training():

@@ -5,16 +5,16 @@ import torch.nn as nn
 import torch.optim as optim
 from torchsummary import summary
 import mlflow
-import yaml
 from config import config
 
-from dataloader_sample import get_dataloaders
-from helpers import (
-    check_device,
-    plot_training_curves,
-    log_gpu_metrics,
-    detection_loss_set,
-)
+if config["settings"]["use_sample_dataset"]: # Load whatever dataloader is needed for the current dataset
+    from dataloader_sample import get_dataloaders
+else:
+    from dataloader_full import get_dataloaders
+
+
+from utility.training import plot_training_curves, log_gpu_metrics, detection_loss_set
+from utility.hardware import check_device
 
 device = check_device()
 

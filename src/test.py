@@ -1,10 +1,16 @@
 # future test script for custom model cnn
 import torch
-from dataloader_sample import get_dataloaders
-from helpers import check_device, show_predictions
+import os
+from utility.testing import show_predictions
+from utility.hardware import check_device
 from train import CustomCNN
 from config import config
-import os
+
+if config["settings"]["use_sample_dataset"]: # Load whatever dataloader is needed for the current dataset
+    from dataloader_sample import get_dataloaders
+else:
+    from dataloader_full import get_dataloaders
+
 
 models_path = os.path.join(config["path"]["run_base_dir"], "models")
 
