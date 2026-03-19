@@ -23,7 +23,7 @@ pipeline {
             steps {
                 echo "Running Pytest inside container"
                 // To mount the data folder and run the unit tests
-                sh "docker run --rm -v '$(pwd)/data:/app/data' mlops-kls-container:${env.BUILD_ID}"
+                sh "docker run --rm -v '${WORKSPACE}/data:/app/data' mlops-kls-container:${env.BUILD_ID}"
             }
         }
     }
