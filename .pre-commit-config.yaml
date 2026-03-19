@@ -13,4 +13,4 @@ repos:
     rev: 6.1.0
     hooks:
     -   id: flake8                   # Teacher's requirement: checks PEP8 coding standards
-        args: ['--max-line-length=200'] # Gives you a bit more room than the default 80 chars
+        args: ['--max-line-length=200', '--extend-ignore=E203'] # Gives you a bit more room than the default 80 chars & check for style / syntax errors

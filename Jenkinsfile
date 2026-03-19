@@ -30,7 +30,7 @@ pipeline {
                 sh "docker run --rm -v '${WORKSPACE}/data:/app/data' mlops-kls-container:${env.BUILD_ID}"
             }
         }
-        stage("Run Model Training Run") {
+        stage("Model Training Run") {
             steps {
                 echo "Starting a training run"
                 sh "docker run --rm -v ${WORKSPACE}/data:/app/data mlops-kls-container:${env.BUILD_ID} python src/main.py"
