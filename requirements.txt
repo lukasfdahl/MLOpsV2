@@ -5,3 +5,7 @@ Pillow
 matplotlib
 mlflow
 torchsummary
+
+# For pre-commit checking
+pre-commit
+pytest
