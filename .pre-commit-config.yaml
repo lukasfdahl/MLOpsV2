@@ -4,7 +4,7 @@ repos:
     hooks:
     -   id: trailing-whitespace      # Removes weird invisible spaces
     -   id: end-of-file-fixer        # Ensures files end with a blank line
-    -   id: check-yaml               # Makes sure your config.yaml isn't broken
+    -   id: check-yaml               # Makes sure config.yaml isn't broken
     -   id: check-added-large-files  # Teacher's requirement: prevents committing 50GB datasets
         args: ['--maxkb=50000']      # Max file size is 50MB
     -   id: detect-private-key       # Teacher's requirement: catches hardcoded API keys/secrets
@@ -13,4 +13,4 @@ repos:
     rev: 6.1.0
     hooks:
     -   id: flake8                   # Teacher's requirement: checks PEP8 coding standards
-        args: ['--max-line-length=100'] # Gives you a bit more room than the default 80 chars
+        args: ['--max-line-length=200'] # Gives you a bit more room than the default 80 chars

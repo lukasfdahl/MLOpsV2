@@ -4,3 +4,5 @@
  made by Lukas, Kapser and Salar
 
 Setup a new enviorment and then run "bash setup.sh" to setup the project once cloned
+
+To run unit tests run "bash run_unit_tests.sh"
