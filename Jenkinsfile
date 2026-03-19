@@ -8,7 +8,7 @@ pipeline {
                 checkout([$class: 'GitSCM', 
                 branches: [[name: '*/development']], 
                 userRemoteConfigs: [[url: 'https://github.com/lukasfdahl/MLOpsV2.git', 
-                credentialsId: 'github-kls-bot']])
+                credentialsId: 'github-kls-bot']]])
             }
         }
 
