@@ -1,6 +1,10 @@
 pipeline {
     agent any // Tells Jenkins to run this on any available "worker"
 
+    options {
+        timestamps() // Adds clock times to the logs
+    }
+
     stages {
         stage("Checkout") {
             steps {
