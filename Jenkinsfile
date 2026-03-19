@@ -5,7 +5,10 @@ pipeline {
         stage("Checkout") {
             steps {
                 // Jenkins automatically clones the GitHub repo here
-                checkout scm
+                checkout([$class: 'GitSCM', 
+                branches: [[name: '*/development']], 
+                userRemoteConfigs: [[url: 'https://github.com/lukasfdahl/MLOpsV2.git', 
+                credentialsId: 'github-kls-bot']]
             }
         }
 
