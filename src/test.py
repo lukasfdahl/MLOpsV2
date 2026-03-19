@@ -3,8 +3,12 @@ import torch
 from dataloader_sample import get_dataloaders
 from helpers import check_device, show_predictions
 from train import CustomCNN
+from config import config
+import os
 
-CHECKPOINT = "custom_model/best_model.pth"
+models_path = os.path.join(config["path"]["run_base_dir"], "models")
+
+CHECKPOINT = os.path.join(models_path, "best_model.pth")
 NUM_CLASSES = 80
 
 device = check_device()
@@ -24,5 +28,5 @@ show_predictions(
     val_loader,
     device,
     num_examples=8,
-    save_path="custom_model/test_predictions.png",
+    save_path= os.path.join(models_path, "test_predictions.png"),
 )

@@ -1,9 +1,9 @@
 # Random Other files
-
+runs/*
 
 # ML Flow
 mlflow.db
-mlruns/
+mlruns/*
 
 
 # Byte-compiled / optimized / DLL files

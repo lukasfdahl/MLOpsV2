@@ -383,7 +383,7 @@ def greedy_match(pred_boxes, tgt_boxes):
         # pick closest unused prediction for this target
         c = cost[:, t].clone()
         c[used_p] = 1e9
-        p = torch.argmin(c).item()
+        p = int(torch.argmin(c).item())
         if c[p].item() >= 1e8:
             break
         used_p[p] = True

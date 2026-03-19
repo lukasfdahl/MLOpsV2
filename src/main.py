@@ -3,8 +3,8 @@ from helpers import check_device
 import yaml
 
 # does git work?
-def run_training(config):
-    train.train_model(config)
+def run_training():
+    train.train_model()
     print("Testing complete.")
 
 
@@ -15,8 +15,5 @@ def run_inference():
 
 if __name__ == "__main__":
     device = check_device()
-    with open("config/train.config.yaml") as f:
-        config = yaml.safe_load(f)
-
-    run_training(config)
+    run_training()
     run_inference()  # Not implimented

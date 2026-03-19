@@ -1,23 +1,32 @@
-dataset_path: data/coco128_small
+settings:
+  use_sample_dataset: True # Set to Ture to train locally (uses small 128 image dataset instead of full one)
 
-epochs: 3
-batch: 60          # smaller batch for CPU
-imgsz: 640
-patience: 20
-workers: 2        # important on Mac
 
-optimizer: SGD
-lr0: 0.01
-lrf: 0.01
-momentum: 0.937
-weight_decay: 0.0005
-warmup_epochs: 3.0
+path:
+  run_base_dir: runs # Used as a base path for files generated when running the code, like model fiels from training
+  sample_dataset_path: data/coco128_small # used
+  full_dataset_path: dataset/coco128 # used
 
-hsv_h: 0.015
-hsv_s: 0.7
-hsv_v: 0.4
-translate: 0.1
-scale: 0.5
-fliplr: 0.5
-mosaic: 1.0
-mixup: 0.0
+training:
+  epochs: 3 # used
+  batch_size: 60 # used      # smaller batch for CPU
+  learning_rate: 0.0001 # used
+  imgsz: 640
+  patience: 20
+  workers: 2        # important on Mac
+
+  optimizer: SGD
+  lr0: 0.01
+  lrf: 0.01
+  momentum: 0.937
+  weight_decay: 0.0005 # used
+  warmup_epochs: 3.0
+
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
+  translate: 0.1
+  scale: 0.5
+  fliplr: 0.5
+  mosaic: 1.0
+  mixup: 0.0

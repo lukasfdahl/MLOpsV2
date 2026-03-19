@@ -6,6 +6,7 @@ import torch.optim as optim
 from torchsummary import summary
 import mlflow
 import yaml
+from config import config
 
 from dataloader_sample import get_dataloaders
 from helpers import (
@@ -15,22 +16,19 @@ from helpers import (
     detection_loss_set,
 )
 
-
-with open("config/train.config.yaml") as f:
-    config = yaml.safe_load(f)
-
 device = check_device()
 
 # mlflow ui --backend-store-uri sqlite:////Users/kaspe/Desktop/kls_repo/mlflow.db
 
 # model configureation
-EPOCHS = config.get("epochs", 10)
-BATCH_SIZE = config.get("batch_size", 60)
-LEARNING_RATE = config.get("learning_rate", 1e-4)
-WEIGHT_DECAY = config.get("weight_decay", 1e-4)
+EPOCHS = config["training"]["epochs"]
+BATCH_SIZE = config["training"]["batch_size"]
+LEARNING_RATE = config["training"]["learning_rate"]
+WEIGHT_DECAY = config["training"]["weight_decay"]
 
 # Make sure the output dir exists
-os.makedirs("custom_model", exist_ok=True)
+models_path = os.path.join(config["path"]["run_base_dir"], "models")
+os.makedirs(models_path, exist_ok=True)
 
 
 # Simple CNN as custom model for object detection,
@@ -104,7 +102,7 @@ class CustomCNN(nn.Module):
 
 
 # train function
-def train_model(config):
+def train_model():
 
     print(f"starting training loop")
     # mlflow setup
@@ -128,8 +126,14 @@ def train_model(config):
             }
         )
 
+        # To use smaller sample dataset if enabled
+        if config["settings"]["use_sample_dataset"]:
+            dataset_path = config["path"]["sample_dataset_path"]
+        else:
+            dataset_path = config["path"]["full_dataset_path"]
+
         train_loader, val_loader, num_classes = get_dataloaders(
-            data_dir=config["dataset_path"],
+            data_dir=dataset_path,
             batch_size=BATCH_SIZE,
         )
 
@@ -278,7 +282,7 @@ def train_model(config):
                         "val_loss": val_loss,
                         "val_acc": val_acc,
                     },
-                    "custom_model/best_model.pth",
+                    os.path.join(models_path, "best_model.pth"),
                 )
                 print(f"          ↳ New best model saved (val_loss={val_loss:.4f})")
 
@@ -290,24 +294,21 @@ def train_model(config):
                     "val_loss": val_loss,
                     "val_acc": val_acc,
                 },
-                "custom_model/last_model.pth",
+                os.path.join(models_path, "last_model.pth"),
             )
 
         print("\n" + "=" * 55)
         print("Training complete.")
         print(f"  Best model: epoch {best_epoch}, val_loss={best_val_loss:.4f}")
-        print("  Saved → custom_model/best_model.pth")
-        print("  Saved → custom_model/last_model.pth")
+        print(f"  Saved → {os.path.join(models_path, "best_model.pth")}")
+        print(f"  Saved → {os.path.join(models_path, "last_model.pth")}")
 
         # figures / graphs — log directly to MLflow so they render in the UI
         fig = plot_training_curves(history)
         mlflow.log_figure(fig, "training_curves.png")
 
-        mlflow.log_artifact("custom_model/best_model.pth")
+        mlflow.log_artifact(os.path.join(models_path, "best_model.pth"))
 
 
 if __name__ == "__main__":
-    with open("config/train.config.yaml") as f:
-        config = yaml.safe_load(f)
-
-    train_model(config)
+    train_model()
