@@ -26,7 +26,7 @@ def test_one_epoch_smoke():
     Run exactly one epoch of training + validation on coco128_small.
     Pass criteria: no exception, loss is a finite number.
     """
-    from dataloader_sample import get_dataloaders
+    from dataloader import get_dataloaders
     from model import CustomCNN
     from utility.training import detection_loss_set
 
@@ -42,7 +42,7 @@ def test_one_epoch_smoke():
     model = CustomCNN(num_classes=num_classes, num_queries=10).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    # ── Training pass ─────────────────────────────────────────────────────────
+    # Training pass
     model.train()
     train_loss_total = 0.0
     train_total = 0
