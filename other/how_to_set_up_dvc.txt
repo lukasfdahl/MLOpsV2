@@ -1,0 +1,6 @@
+run the following commands (remeber to remove "" symbols):
+
+1: pip install -r requrements.txt
+2: dvc remote add -d casaremote webdav://dvc.lukasfdahl.com/:7421/
+3: dvc remote modify --local casaremote user "insert username here"
+4: dvc remote modify --local casaremote password "insert password here"

@@ -6,6 +6,8 @@ matplotlib
 mlflow
 torchsummary
 
+dvc[webdav]
+
 # For pre-commit checking
 pre-commit
 pytest
