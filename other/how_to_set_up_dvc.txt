@@ -1,6 +1,9 @@
-run the following commands (remeber to remove "" symbols):
+run the following commands (remeber to remove "" symbols): (the last two is to slow down how fast dvc makes requests a bit so it dosen't overwhelm and kill the shitty server i set up)
 
 1: pip install -r requrements.txt
-2: dvc remote add -d casaremote webdav://dvc.lukasfdahl.com/:7421/
+2: dvc remote add casaremote url webdavs://dvc.lukasfdahl.com/
 3: dvc remote modify --local casaremote user "insert username here"
 4: dvc remote modify --local casaremote password "insert password here"
+
+5: dvc remote modify casaremote jobs 2
+5: remote modify casaremote timeout 300
