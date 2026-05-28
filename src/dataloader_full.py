@@ -21,7 +21,8 @@ class CocoClassificationDataset(Dataset):
         # Build category ID → contiguous 0-indexed label mapping
         # COCO uses 80 classes but IDs are non-contiguous (1-90 with gaps)
         cat_ids_sorted = sorted([c["id"] for c in data["categories"]])
-        self.cat_id_to_idx = {cid: idx for idx, cid in enumerate(cat_ids_sorted)}
+        self.cat_id_to_idx = {cid: idx for idx,
+                              cid in enumerate(cat_ids_sorted)}
         self.num_classes = len(cat_ids_sorted)
 
         # Build image_id → image metadata map
@@ -109,7 +110,8 @@ def get_dataloaders(data_dir="dataset/coco", batch_size=16, img_size=64):
 
     val_dataset = CocoClassificationDataset(
         images_dir=os.path.join(data_dir, "val2017"),
-        annotation_file=os.path.join(data_dir, "annotations", "instances_val2017.json"),
+        annotation_file=os.path.join(
+            data_dir, "annotations", "instances_val2017.json"),
         transform=transform,
     )
 

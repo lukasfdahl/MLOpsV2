@@ -2,6 +2,8 @@ import train as train
 from utility.hardware import check_device
 
 # does git work?
+
+
 def run_training():
     train.train_model()
     print("Testing complete.")

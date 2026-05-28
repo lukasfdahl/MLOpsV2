@@ -51,7 +51,8 @@ class CocoClassificationDataset(Dataset):
         parts = lines[0].split()
         class_id = int(parts[0])
         # bbox as [x_center, y_center, width, height], values in [0, 1]
-        bbox_raw = [float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])]
+        bbox_raw = [float(parts[1]), float(parts[2]),
+                    float(parts[3]), float(parts[4])]
         boxes = torch.tensor([bbox_raw], dtype=torch.float32)
         labels = torch.tensor([class_id], dtype=torch.long)
 
@@ -66,6 +67,8 @@ def collate_fn(batch):
     return torch.stack(images), list(targets)
 
 # DataLoader function
+
+
 def get_dataloaders(
     data_dir="data/coco128_small", batch_size=16, img_size=64, val_split=0.2
 ):
@@ -93,8 +96,10 @@ def get_dataloaders(
         generator=torch.Generator().manual_seed(42),
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+    train_loader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
     # add later the test loader too.
 
     # coco128 is a subset of COCO which has 80 classes, change later

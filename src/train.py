@@ -7,7 +7,8 @@ from torchsummary import summary
 import mlflow
 from config import config
 
-if config["settings"]["use_sample_dataset"]: # Load whatever dataloader is needed for the current dataset
+# Load whatever dataloader is needed for the current dataset
+if config["settings"]["use_sample_dataset"]:
     from dataloader_sample import get_dataloaders
 else:
     from dataloader_full import get_dataloaders
@@ -104,7 +105,7 @@ class CustomCNN(nn.Module):
 # train function
 def train_model():
 
-    print(f"starting training loop")
+    print("starting training loop")
     # mlflow setup
     mlflow.set_tracking_uri(
         os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
@@ -154,7 +155,8 @@ def train_model():
             optimizer, mode="min", factor=0.5, patience=3
         )
 
-        history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
+        history = {"train_loss": [], "val_loss": [],
+                   "train_acc": [], "val_acc": []}
 
         best_val_loss = float("inf")
         best_epoch = 0
@@ -284,7 +286,8 @@ def train_model():
                     },
                     os.path.join(models_path, "best_model.pth"),
                 )
-                print(f"          ↳ New best model saved (val_loss={val_loss:.4f})")
+                print(
+                    f"          ↳ New best model saved (val_loss={val_loss:.4f})")
 
             # also save last model if fails to complete or more training
             torch.save(
@@ -299,7 +302,8 @@ def train_model():
 
         print("\n" + "=" * 55)
         print("Training complete.")
-        print(f"  Best model: epoch {best_epoch}, val_loss={best_val_loss:.4f}")
+        print(
+            f"  Best model: epoch {best_epoch}, val_loss={best_val_loss:.4f}")
         print(f"  Saved → {os.path.join(models_path, 'best_model.pth')}")
         print(f"  Saved → {os.path.join(models_path, 'last_model.pth')}")
 
