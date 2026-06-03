@@ -1,11 +1,11 @@
 settings:
-  use_sample_dataset: True # Set to Ture to train locally (uses small 128 image dataset instead of full one)
+  use_sample_dataset: False # Set to True to train locally (uses small 128 image dataset instead of full one)
 
 
 path:
   run_base_dir: runs # Used as a base path for files generated when running the code, like model fiels from training
   sample_dataset_path: data/coco128_small
-  full_dataset_path: dataset/coco128
+  full_dataset_path: data/dvc
 
 
 training:
