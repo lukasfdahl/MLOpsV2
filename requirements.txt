@@ -11,3 +11,6 @@ dvc[webdav]
 # For pre-commit checking
 pre-commit
 pytest
+
+#
+carbontracker

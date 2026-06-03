@@ -8,3 +8,6 @@ torchsummary
 
 # Still needs to run unit tests
 pytest
+
+#carbon tracking
+carbontracker
