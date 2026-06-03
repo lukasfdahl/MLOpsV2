@@ -1,6 +1,6 @@
 settings:
   use_sample_dataset: True # Set to Ture to train locally (uses small 128 image dataset instead of full one)
-
+  ailab_training: False 
 
 path:
   run_base_dir: runs # Used as a base path for files generated when running the code, like model fiels from training

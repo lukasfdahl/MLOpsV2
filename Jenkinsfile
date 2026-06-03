@@ -30,12 +30,12 @@ pipeline {
                 sh "docker run --rm -v '${WORKSPACE}/data:/app/data' mlops-kls-container:${env.BUILD_ID}"
             }
         }
-        
+
         stage("Model Training Run - Local (sample dataset)") {
             when {
                 expression {
                     def config = readFile('config/small_train.config.yaml')
-                    return config.contains('use_sample_dataset: True')
+                    return config.contains('use_sample_dataset: True') // Fixed: True not False
                 }
             }
             steps {
@@ -48,30 +48,29 @@ pipeline {
             when {
                 expression {
                     def config = readFile('config/final_train.config.yaml')
-                    return config.contains('use_sample_dataset: False')
+                    return config.contains('ailab_training: True')
                 }
             }
-            steps {
+            steps { // Fixed: removed extra closing brace
                 echo "Syncing code to AI-LAB and submitting SLURM job"
                 sshagent(['ailab-ssh-key']) {
                     sh '''
-                        # Push latest code to AI-LAB (skip data/models/cache)
-                        rsync -az \
+                        rsync -az -e "ssh -o StrictHostKeyChecking=no" \
                             --exclude='.git' \
                             --exclude='runs/' \
                             --exclude='.dvc/cache' \
                             --exclude='data/dvc' \
                             ./ ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk:/ceph/project/MLOPS_KLS/
 
-                        # Submit SLURM job and capture job ID
-                        JOB_ID=$(ssh ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk \
+                        JOB_ID=$(ssh -o StrictHostKeyChecking=no \
+                            ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk \
                             "sbatch /ceph/project/MLOPS_KLS/slurm/train_job.sh" \
                             | awk '{print $NF}')
                         echo "Submitted SLURM job: $JOB_ID"
 
-                        # Poll until done (every 30s, max 2h)
                         for i in $(seq 1 240); do
-                            STATUS=$(ssh ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk \
+                            STATUS=$(ssh -o StrictHostKeyChecking=no \
+                                ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk \
                                 "squeue -j $JOB_ID -h -o '%T' 2>/dev/null || echo DONE")
                             echo "[$i/240] Job $JOB_ID: $STATUS"
                             [ -z "$STATUS" ] || [ "$STATUS" = "DONE" ] && break
