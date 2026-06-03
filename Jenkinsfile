@@ -56,8 +56,8 @@ pipeline {
                 sshagent(['ailab-ssh-key']) {
                     sh '''
                         rsync -az -e "ssh -o StrictHostKeyChecking=no" \
+                            --filter=':- .gitignore' \
                             --exclude='.git' \
-                            --exclude='runs/' \
                             --exclude='.dvc/cache' \
                             --exclude='data/dvc' \
                             ./ ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk:/ceph/project/MLOPS_KLS/

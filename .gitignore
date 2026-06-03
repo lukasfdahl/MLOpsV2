@@ -1,5 +1,7 @@
 # Random Other files
-runs/*
+runs/**
+!runs/models/best_model.pth.dvc
+!runs/models/last_model.pth.dvc
 
 # ML Flow
 mlflow.db
