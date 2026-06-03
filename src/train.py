@@ -9,7 +9,7 @@ from model import CustomCNN
 from dataloader import get_dataloaders
 from utility.training import plot_training_curves, log_gpu_metrics, detection_loss_set
 from utility.hardware import check_device
-
+from carbontracker.tracker import CarbonTracker
 device = check_device()
 
 # Training hyperparameters from config
@@ -81,8 +81,14 @@ def train_model():
             f"{'Epoch':>6}{'Train Loss':>12}{'Train Acc':>11}{'Val Loss':>10}{'Val Acc':>9}")
         print("-" * 55)
 
+        # carbon tracking
+        tracker = CarbonTracker(epochs=EPOCHS, log_dir=config["path"]["run_base_dir"])
+
         # simple training loop with train/val phases and MLflow logging for now
         for epoch in range(1, EPOCHS + 1):
+
+            # start tracking carbon for this epoch
+            tracker.epoch_start()
 
             # Training
             model.train()
@@ -159,6 +165,9 @@ def train_model():
                 os.path.join(models_path, "last_model.pth"),
             )
 
+            # end carbon tracking for this epoch    
+            tracker.epoch_end()
+
         print("\n" + "=" * 55)
         print(
             f"Training complete. Best epoch {best_epoch}, val_loss={best_val_loss:.4f}")
@@ -168,10 +177,18 @@ def train_model():
         mlflow.log_figure(fig, "training_curves.png")
         mlflow.log_artifact(os.path.join(models_path, "best_model.pth"))
 
+        tracker.stop()
+
+        # Log carbon footprint to MLflow
+        carbon_log = os.path.join(config["path"]["run_base_dir"], "carbontracker")
+        if os.path.exists(carbon_log):
+            mlflow.log_artifacts(carbon_log, name="carbontracker")
+            print("Carbon footprint logged to MLflow")
+
         # Register model in MLflow model registry if it meets performance criteria
         mlflow.pytorch.log_model(
             model,
-            artifact_path="model",
+            name="model",
             registered_model_name="CustomCNN",
         )
         print(f"Model registered in MLflow registry (val_loss={best_val_loss:.4f})")
