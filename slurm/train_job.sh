@@ -13,6 +13,6 @@ VENV=~/mlops_venv
 echo "=== Training Job | $(date) | $(hostname) ==="
 cd $PROJECT
 
-# Run training (Jenkins already rsynced latest code before submitting)
+# Run training with final config (full dataset)
 singularity exec --nv --bind $PROJECT:/app $CONTAINER \
-    python /app/src/main.py
+    bash -c "cd /app && TRAIN_CONFIG=config/final_train.config.yaml python src/main.py"
