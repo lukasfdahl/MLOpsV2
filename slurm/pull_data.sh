@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=dvc-pull
 #SBATCH --output=/ceph/project/MLOPS_KLS/slurm/pull_%j.log
-#SBATCH --time=04:00:00
-#SBATCH --mem=4G
-#SBATCH --cpus-per-task=4
+#SBATCH --time=12:00:00
+#SBATCH --mem=24G
+#SBATCH --cpus-per-task=15
 
 CONTAINER=/ceph/container/pytorch/pytorch_25.09.sif
 PROJECT=/ceph/project/MLOPS_KLS
