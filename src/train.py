@@ -168,6 +168,14 @@ def train_model():
         mlflow.log_figure(fig, "training_curves.png")
         mlflow.log_artifact(os.path.join(models_path, "best_model.pth"))
 
+        # Register model in MLflow model registry if it meets performance criteria
+        mlflow.pytorch.log_model(
+            model,
+            artifact_path="model",
+            registered_model_name="CustomCNN",
+        )
+        print(f"Model registered in MLflow registry (val_loss={best_val_loss:.4f})")
+
 
 if __name__ == "__main__":
     train_model()
