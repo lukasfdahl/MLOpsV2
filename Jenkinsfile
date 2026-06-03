@@ -19,7 +19,7 @@ pipeline {
         stage("Build Docker Image") {
             steps {
                 echo "Building the Docker container:"
-                sh "docker build -f docker/DockerFile -t mlops-kls-container:${env.BUILD_ID} ."
+                sh "docker build -f docker/DockerFile -t mlops-kls-container:${env.GIT_COMMIT} ." // Tagged with git commit hash for traceability
             }
         }
 
@@ -27,7 +27,7 @@ pipeline {
             steps {
                 echo "Running Pytest inside container"
                 // To mount the data folder and run the unit tests (${WORKSPACE} is the folder for the current build run)
-                sh "docker run --rm -v '${WORKSPACE}/data:/app/data' mlops-kls-container:${env.BUILD_ID}"
+                sh "docker run --rm -v '${WORKSPACE}/data:/app/data' mlops-kls-container:${env.GIT_COMMIT}"
             }
         }
 
@@ -40,7 +40,7 @@ pipeline {
             }
             steps {
                 echo "Starting a local training run with sample dataset"
-                sh "docker run --rm -v ${WORKSPACE}/data:/app/data mlops-kls-container:${env.BUILD_ID} python src/main.py"
+                sh "docker run --rm -v ${WORKSPACE}/data:/app/data mlops-kls-container:${env.GIT_COMMIT} python src/main.py"
             }
         }
 
@@ -85,7 +85,7 @@ pipeline {
     post {
         always {
             echo "Cleaning up old Docker images:"
-            sh "docker rmi mlops-kls-container:${env.BUILD_ID} || true"
+            sh "docker rmi mlops-kls-container:${env.GIT_COMMIT} || true" // Cleanup image tagged with commit hash
         }
         success {
             echo "Pipeline passed"
