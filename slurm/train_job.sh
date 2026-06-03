@@ -13,6 +13,11 @@ VENV=~/mlops_venv
 echo "=== Training Job | $(date) | $(hostname) ==="
 cd $PROJECT
 
+# Ensure full dataset is checked out from DVC cache
+echo "=== DVC Checkout | $(date) ==="
+singularity exec $CONTAINER \
+    $VENV/bin/dvc checkout
+
 # Run training with final config (full dataset)
 singularity exec --nv --bind $PROJECT:/app $CONTAINER \
     bash -c "cd /app && TRAIN_CONFIG=config/final_train.config.yaml python src/main.py"
