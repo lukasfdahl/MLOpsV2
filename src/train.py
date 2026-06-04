@@ -186,7 +186,6 @@ def train_model(rank=0, world_size=1):
         except ImportError:
             if is_main:
                 print("DeepSpeed not available, falling back to standard DDP/single GPU")
-            ZERO_STAGE = 0
 
     # Standard DDP wrap (when not using DeepSpeed)
     if ZERO_STAGE == 0:
