@@ -1,16 +1,25 @@
+# requirements.txt
 torch
 torchvision
 PyYAML
 Pillow
 matplotlib
+
+# log
 mlflow
+
+
 torchsummary
 
+# data versioning and management
 dvc[webdav]
 
 # For pre-commit checking
 pre-commit
 pytest
 
-#
+# track carbon
 carbontracker
+
+# ddp and zero
+deepspeed
