@@ -14,8 +14,9 @@ echo "=== Training Job | $(date) | $(hostname) ==="
 cd $PROJECT
 
 # Pull latest code first
-echo "=== Git pull | $(date) ==="
-git pull origin development --rebase
+echo "=== Syncing to latest code | $(date) ==="
+git fetch origin development
+git reset --hard origin/development
 
 # Install project requirements into the venv
 echo "=== Installing requirements | $(date) ==="
