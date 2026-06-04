@@ -82,18 +82,14 @@ def train_model():
         print("-" * 55)
 
         # Carbon tracking — tracks energy and CO2 for the full training run
-        # Gracefully skips on environments without supported hardware (e.g. CI/CD Docker)
-        try:
-            tracker = CarbonTracker(
-                epochs=EPOCHS,
-                log_dir=config["path"]["run_base_dir"],
-                components="gpu",  # GPU only — skip CPU (no RAPL permissions on AI-LAB)
-            )
-            carbon_available = True
-            print("CarbonTracker: GPU tracking enabled")
-        except Exception as e:
-            print(f"CarbonTracker: hardware unavailable, skipping ({e})")
-            carbon_available = False
+        # ignore_errors=True gracefully skips on environments without supported hardware (e.g. CI/CD Docker)
+        tracker = CarbonTracker(
+            epochs=EPOCHS,
+            log_dir=config["path"]["run_base_dir"],
+            components="gpu",  # GPU only — skip CPU (no RAPL permissions on AI-LAB)
+            ignore_errors=True,  # gracefully skip if no supported hardware found
+        )
+        carbon_available = True
 
         # simple training loop with train/val phases and MLflow logging for now
         for epoch in range(1, EPOCHS + 1):
