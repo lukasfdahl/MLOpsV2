@@ -24,7 +24,7 @@ os.makedirs(models_path, exist_ok=True)
 # Main training loop
 
 
-def train_model():
+def train_model(pretrained_model : CustomCNN | None = None):
 
     print("Starting training loop")
 
@@ -56,7 +56,10 @@ def train_model():
         )
 
         # from model.py
-        model = CustomCNN(num_classes=num_classes).to(device)
+        if pretrained_model != None:
+            model = pretrained_model
+        else:
+            model = CustomCNN(num_classes=num_classes).to(device)
 
        # Print model summary using torchsummary (handles CUDA/non-CUDA devices)
         summary_device = "cuda" if str(device) == "cuda" else "cpu"
@@ -72,7 +75,7 @@ def train_model():
 
         # Train the model
         history = {"train_loss": [], "val_loss": [],
-                  
+
                    "train_acc": [], "val_acc": []}
         best_val_loss, best_epoch = float("inf"), 0
 
@@ -175,7 +178,7 @@ def train_model():
                 os.path.join(models_path, "last_model.pth"),
             )
 
-            # end carbon tracking for this epoch    
+            # end carbon tracking for this epoch
             if carbon_available:
                 tracker.epoch_end()
 
