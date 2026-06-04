@@ -44,7 +44,7 @@ def _run_one_epoch_train(model, train_loader, optimizer, scaler, device, use_amp
         optimizer.zero_grad()
 
         # Automatic Mixed Precision (AMP) forward pass
-        with torch.cuda.amp.autocast(enabled=use_amp):
+        with torch.autocast(device_type=device.type, enabled=use_amp):
             pred_logits, pred_boxes = model(images)
             loss, metrics = detection_loss_set(
                 pred_logits, pred_boxes, targets,
@@ -75,7 +75,7 @@ def _run_one_epoch_val(model, val_loader, device, use_amp):
         for images, targets in val_loader:
             images = images.to(device)
 
-            with torch.cuda.amp.autocast(enabled=use_amp):
+            with torch.autocast(device_type=device.type, enabled=use_amp):
                 pred_logits, pred_boxes = model(images)
                 loss, metrics = detection_loss_set(
                     pred_logits, pred_boxes, targets,
