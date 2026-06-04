@@ -9,14 +9,14 @@ path:
   full_dataset_path: data/dvc               # path to full dataset (DVC version)
 
 dataloader:
-  num_workers: 8       # Number of workers for data loading
-  prefetch_factor: 4    # Number of batches to prefetch for each worker
+  num_workers: 12       # Number of workers for data loading
+  prefetch_factor: 6    # Number of batches to prefetch for each worker
   pin_memory: True      # Whether to pin memory during data loading
 
 training:
   epochs: 50
-  batch_size: 1024
-  learning_rate: 0.0015
+  batch_size: 1536
+  learning_rate: 0.00225
   weight_decay: 0.0005
   multi_gpu: 2         # Number of GPUs to use (1 = single GPU, 2+ = DDP)
   zero_stage: 0         # DeepSpeed ZeRO stage (0 = off, 1/2/3 = increasing VRAM savings)
