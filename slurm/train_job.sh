@@ -34,14 +34,19 @@ singularity exec --nv --bind $PROJECT:/app $CONTAINER \
 # Ensure full dataset is checked out from DVC cache
 echo "=== DVC Checkout | $(date) ==="
 
+
 # 1. NUKE the entire temporary folder to clear ALL stuck SQLite locks and state
-rm -rf .dvc/tmp/*
+#rm -rf .dvc/tmp/*
+#rm -f .git/index.lock
+
+# 1. Remove surface locks left by killed jobs, but KEEP the SQLite database
+rm -f .dvc/tmp/lock .dvc/tmp/rwlock
 rm -f .git/index.lock
 
 # 2. Disable DVC analytics prompt to prevent silent headless hanging
 export DVC_NO_ANALYTICS=true
 
-# 3. Pull new data 
+# 3. Pull new data (COMMENTED OUT: Only uncomment this ONCE if you push new data to remote bucket!)
 # echo "Pulling dataset updates from remote..."
 # singularity exec $CONTAINER \
 #     $VENV/bin/dvc pull -v
@@ -73,8 +78,8 @@ fi
 # Version the trained model with DVC
 echo "=== DVC model versioning | $(date) ==="
 
-# Remove locks again just in case the training step caused a weird state
-rm -rf .dvc/tmp/*
+# GENTLE CLEAN again before adding the model, just in case
+rm -f .dvc/tmp/lock .dvc/tmp/rwlock
 rm -f .git/index.lock
 
 singularity exec $CONTAINER \
