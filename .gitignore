@@ -1,7 +1,8 @@
 # Random Other files
-runs/**
-!runs/models/
-!runs/models/*
+/runs/
+!/runs/models/
+/runs/models/*
+!/runs/models/*.dvc
 
 # ML Flow
 mlflow.db
