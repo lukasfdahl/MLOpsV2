@@ -124,7 +124,7 @@ def train_model(rank=0, world_size=1):
 
     # AMP scaler
     use_amp = torch.cuda.is_available()
-    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     is_main = _is_main_process()
 
@@ -233,9 +233,9 @@ def train_model(rank=0, world_size=1):
               f"warmup={WARMUP_EPOCHS} epochs, "
               f"early_stopping={EARLY_STOPPING_PATIENCE} epochs)...\n")
 
-    # Carbon tracking, only initialize if a CUDA GPU is actually present
-    # Only track on rank 0 to avoid duplicate carbon logging
-    carbon_available = torch.cuda.is_available() and is_main
+    # Carbon tracking — only on rank 0, and only if CUDA is available
+    # is_main check must come first to avoid all DDP ranks initializing their own tracker
+    carbon_available = is_main and torch.cuda.is_available()
     if carbon_available:
         tracker = CarbonTracker(
             epochs=EPOCHS,
