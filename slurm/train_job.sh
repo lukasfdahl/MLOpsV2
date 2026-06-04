@@ -12,6 +12,9 @@ CONTAINER=/ceph/container/pytorch/pytorch_25.09.sif
 PROJECT=/ceph/project/MLOPS_KLS
 VENV=~/mlops_venv
 
+# Increase the maximum number of open files to avoid "Too many open files" errors with DataLoader workers
+ulimit -n 65536
+
 echo "=== Training Job | $(date) | $(hostname) ==="
 cd $PROJECT
 

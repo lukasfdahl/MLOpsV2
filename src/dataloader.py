@@ -5,6 +5,10 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from torchvision import transforms
 from PIL import Image
 
+
+# avoid to many open files
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 """
 dataset classes for the two supported formats: YOLO text files + images, and COCO JSON annotations + images in folders. 
 Both return targets in the same format (labels and boxes tensors) to keep the training loop clean and format-agnostic.
