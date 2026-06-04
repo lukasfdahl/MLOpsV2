@@ -81,18 +81,26 @@ def train_model():
             f"{'Epoch':>6}{'Train Loss':>12}{'Train Acc':>11}{'Val Loss':>10}{'Val Acc':>9}")
         print("-" * 55)
 
-        # carbon tracking
-        tracker = CarbonTracker(
-            epochs=EPOCHS,
-            log_dir=config["path"]["run_base_dir"],
-            components="gpu",  # only track GPU, skip CPU power (no permissions on AI-LAB...)
-        )
+        # Carbon tracking — tracks energy and CO2 for the full training run
+        # Gracefully skips on environments without supported hardware (e.g. CI/CD Docker)
+        try:
+            tracker = CarbonTracker(
+                epochs=EPOCHS,
+                log_dir=config["path"]["run_base_dir"],
+                components="gpu",  # GPU only — skip CPU (no RAPL permissions on AI-LAB)
+            )
+            carbon_available = True
+            print("CarbonTracker: GPU tracking enabled")
+        except Exception as e:
+            print(f"CarbonTracker: hardware unavailable, skipping ({e})")
+            carbon_available = False
 
         # simple training loop with train/val phases and MLflow logging for now
         for epoch in range(1, EPOCHS + 1):
 
             # start tracking carbon for this epoch
-            tracker.epoch_start()
+            if carbon_available:
+                tracker.epoch_start()
 
             # Training
             model.train()
@@ -170,7 +178,8 @@ def train_model():
             )
 
             # end carbon tracking for this epoch    
-            tracker.epoch_end()
+            if carbon_available:
+                tracker.epoch_end()
 
         print("\n" + "=" * 55)
         print(
@@ -181,11 +190,12 @@ def train_model():
         mlflow.log_figure(fig, "training_curves.png")
         mlflow.log_artifact(os.path.join(models_path, "best_model.pth"))
 
-        tracker.stop()
+        if carbon_available:
+            tracker.stop()
 
         # Log carbon footprint to MLflow
         carbon_log = os.path.join(config["path"]["run_base_dir"], "carbontracker")
-        if os.path.exists(carbon_log):
+        if carbon_available and os.path.exists(carbon_log):
             mlflow.log_artifacts(carbon_log, name="carbontracker")
             print("Carbon footprint logged to MLflow")
 
