@@ -15,8 +15,8 @@ dataloader:
 
 training:
   epochs: 50
-  batch_size: 2048
-  learning_rate: 0.0030
+  batch_size: 1024
+  learning_rate: 0.0015
   weight_decay: 0.0005
   multi_gpu: 2         # Number of GPUs to use (1 = single GPU, 2+ = DDP)
   zero_stage: 0         # DeepSpeed ZeRO stage (0 = off, 1/2/3 = increasing VRAM savings)
