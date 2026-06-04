@@ -1,6 +1,6 @@
 settings:
-  use_sample_dataset: False # Set to True to train locally (uses small 128 image dataset instead of full one)
-  ailab_training: True # Set to True to use AILab's training environment, False to train locally
+  use_sample_dataset: True # Set to True to train locally (uses small 128 image dataset instead of full one)
+  ailab_training: False # Set to True to use AILab's training environment, False to train locally
   skip_dvc_checkout: True # Set to False only when dataset has changed and needs re-checkout
 
 path:
@@ -14,11 +14,11 @@ dataloader:
   pin_memory: True      # Whether to pin memory during data loading
 
 training:
-  epochs: 50
-  batch_size: 2048
-  learning_rate: 0.0030
+  epochs: 3
+  batch_size: 60
+  learning_rate: 0.0001
   weight_decay: 0.0005
-  multi_gpu: 2         # Number of GPUs to use (1 = single GPU, 2+ = DDP)
+  multi_gpu: 1         # Number of GPUs to use (1 = single GPU, 2+ = DDP)
   zero_stage: 0         # DeepSpeed ZeRO stage (0 = off, 1/2/3 = increasing VRAM savings)
   early_stopping_patience: 0
   warmup_epochs: 0
