@@ -105,12 +105,16 @@ def _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main):
 
 
 # Main training loop
-def train_model(rank=0, world_size=1):
+def train_model(rank=None, world_size=None):
     """
     Main training function. Works for both single-GPU and DDP multi-GPU.
     rank: process rank (0 = main process). Set automatically by torchrun.
     world_size: total number of processes (= number of GPUs).
     """
+    if rank is None:
+        rank = int(os.environ.get("LOCAL_RANK", 0))
+    if world_size is None:
+        world_size = int(os.environ.get("WORLD_SIZE", 1))
 
     # DDP setup — initialize process group when running with multiple GPUs
     is_ddp = world_size > 1
@@ -381,7 +385,6 @@ if __name__ == "__main__":
     # torchrun sets LOCAL_RANK and WORLD_SIZE automatically when launching with multiple GPUs
     # Single GPU: python src/main.py
     # Multi GPU:  torchrun --nproc_per_node=2 src/main.py
-    local_rank = int(os.environ.get("LOCAL_RANK", 0))
-    world_size = int(os.environ.get("WORLD_SIZE", 1))
-
-    train_model(rank=local_rank, world_size=world_size)
+    # rank/world_size are read from env inside train_model(), so calling with
+    # no args works whether launched directly or imported by main.py
+    train_model()
