@@ -70,9 +70,13 @@ echo "=== Starting Training | multi_gpu=$NUM_GPUS | $(date) ==="
 if [ "$NUM_GPUS" -gt 1 ]; then
     # DDP multi-GPU training via torchrun
     echo "Launching DDP training on $NUM_GPUS GPUs with torchrun"
-    singularity exec --nv --bind $PROJECT:/app $CONTAINER \
+    singularity exec --nv --bind $PROJECT:/app \
+        --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
+        $CONTAINER \
         bash -c "cd /app && TRAIN_CONFIG=config/final_train.config.yaml \
-        torchrun --nproc_per_node=$NUM_GPUS src/main.py"
+        torchrun --nproc_per_node=$NUM_GPUS \
+        --master_addr=localhost --master_port=29500 \
+        src/main.py"
 else
     # Single GPU training
     echo "Launching single GPU training"
