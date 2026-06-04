@@ -35,8 +35,8 @@ singularity exec --nv --bind $PROJECT:/app $CONTAINER \
 # Ensure full dataset is checked out from DVC cache
 # Controlled by skip_dvc_checkout in config
 # set to False only when dataset has changed
-SKIP_DVC=$(singularity exec $CONTAINER \
-    python3 -c "import yaml; print(yaml.safe_load(open('/ceph/project/MLOPS_KLS/config/final_train.config.yaml'))['settings']['skip_dvc_checkout'])")
+SKIP_DVC=$(singularity exec --bind $PROJECT:/app $CONTAINER \
+    python3 -c "import yaml; print(yaml.safe_load(open('/app/config/final_train.config.yaml'))['settings']['skip_dvc_checkout'])")
 
 if [ "$SKIP_DVC" = "True" ]; then
     echo "=== DVC Checkout SKIPPED (skip_dvc_checkout=True in config) | $(date) ==="
@@ -61,8 +61,8 @@ else
 fi
 
 # Read multi_gpu setting from config to decide single vs DDP launch
-NUM_GPUS=$(singularity exec $CONTAINER \
-    python3 -c "import yaml; print(yaml.safe_load(open('/ceph/project/MLOPS_KLS/config/final_train.config.yaml'))['training']['multi_gpu'])")
+NUM_GPUS=$(singularity exec --bind $PROJECT:/app $CONTAINER \
+    python3 -c "import yaml; print(yaml.safe_load(open('/app/config/final_train.config.yaml'))['training']['multi_gpu'])")
 
 echo "=== Starting Training | multi_gpu=$NUM_GPUS | $(date) ==="
 
