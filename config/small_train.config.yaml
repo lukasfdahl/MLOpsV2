@@ -1,14 +1,21 @@
 settings:
-  use_sample_dataset: True # Set to Ture to train locally (uses small 128 image dataset instead of full one)
-  ailab_training: False 
+  use_sample_dataset: True # Set to True to train locally (uses small 128 image dataset instead of full one)
+  ailab_training: False # Set to True to use AILab's training environment, False to train locally 
 
 path:
-  run_base_dir: runs # Used as a base path for files generated when running the code, like model fiels from training
-  sample_dataset_path: data/coco128_small
-  full_dataset_path: data/dvc
+  run_base_dir: runs                        # Used as a base path for files generated when running the code, like model files from training
+  sample_dataset_path: data/coco128_small   # path to small sample dataset
+  full_dataset_path: data/dvc               # path to full dataset (DVC version)
+
+dataloader:
+  num_workers: 4       # Number of workers for data loading
+  prefetch_factor: 2    # Number of batches to prefetch for each worker
+  pin_memory: True      # Whether to pin memory during data loading
 
 training:
   epochs: 3
   batch_size: 60
   learning_rate: 0.0001
   weight_decay: 0.0005
+  multi_gpu: 1          # Number of GPUs to use (1 = single GPU, 2+ = DDP)
+  zero_stage: 0         # DeepSpeed ZeRO stage (0 = off, 1/2/3 = increasing VRAM savings)

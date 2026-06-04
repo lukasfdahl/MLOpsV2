@@ -2,8 +2,16 @@ import os
 import json
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data.distributed import DistributedSampler
 from torchvision import transforms
 from PIL import Image
+
+from config import config
+
+
+NUM_WORKERS = config["dataloader"].get("num_workers", 4)      # Number of workers for data loading
+PREFETCH_FACTOR = config["dataloader"].get("prefetch_factor", 4)  # Number of batches to prefetch for each worker
+PIN_MEMORY = config["dataloader"].get("pin_memory", True)     # Whether to pin memory during data loading
 
 
 # avoid to many open files
@@ -153,12 +161,16 @@ def _detect_format(data_dir: str) -> str:
 
 # main function to build dataloaders from config path
 
-
+# dataloader fuction that detects format
 def get_dataloaders(
     data_dir: str = "data/coco128_small",
     batch_size: int = 16,
     img_size: int = 64,
     val_split: float = 0.2,
+    num_workers: int = NUM_WORKERS,
+    distributed: bool = False,
+    rank: int = 0,
+    world_size: int = 1,
 ):
     fmt = _detect_format(data_dir)
 
@@ -213,13 +225,28 @@ def get_dataloaders(
             f"{len(val_ds)} val | {num_classes} classes"
         )
 
+    # DistributedSampler splits data across GPUs in DDP mode
+    train_sampler = DistributedSampler(
+        train_ds, num_replicas=world_size, rank=rank, shuffle=True
+    ) if distributed else None
+    val_sampler = DistributedSampler(
+        val_ds, num_replicas=world_size, rank=rank, shuffle=False
+    ) if distributed else None
+
     train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn,
-        num_workers=12, pin_memory=True, persistent_workers=True, prefetch_factor=4
+        train_ds, batch_size=batch_size,
+        shuffle=(train_sampler is None),
+        sampler=train_sampler,
+        collate_fn=collate_fn,
+        num_workers=num_workers, pin_memory=PIN_MEMORY,
+        persistent_workers=True, prefetch_factor=PREFETCH_FACTOR
     )
     val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_fn,
-        num_workers=12, pin_memory=True, persistent_workers=True, prefetch_factor=4
+        val_ds, batch_size=batch_size, shuffle=False,
+        sampler=val_sampler,
+        collate_fn=collate_fn,
+        num_workers=num_workers, pin_memory=PIN_MEMORY,
+        persistent_workers=True, prefetch_factor=PREFETCH_FACTOR
     )
 
     return train_loader, val_loader, num_classes

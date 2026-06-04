@@ -2,6 +2,9 @@
 import os
 import torch
 import torch.optim as optim
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
 from torchsummary import summary
 import mlflow
 from config import config
@@ -10,59 +13,188 @@ from dataloader import get_dataloaders
 from utility.training import plot_training_curves, log_gpu_metrics, detection_loss_set
 from utility.hardware import check_device
 from carbontracker.tracker import CarbonTracker
-device = check_device()
+import deepspeed
 
 # Training hyperparameters from config
 EPOCHS = config["training"]["epochs"]
 BATCH_SIZE = config["training"]["batch_size"]
 LEARNING_RATE = config["training"]["learning_rate"]
 WEIGHT_DECAY = config["training"]["weight_decay"]
+NUM_GPUS = config["training"].get("multi_gpu", 1)
+NUM_WORKERS = config["dataloader"].get("num_workers", 4)
+ZERO_STAGE = config["training"].get("zero_stage", 0)
 
 models_path = os.path.join(config["path"]["run_base_dir"], "models")
 os.makedirs(models_path, exist_ok=True)
 
+
+def _is_main_process():
+    """Returns True if this is the main process (rank 0 in DDP, or single GPU)."""
+    if dist.is_available() and dist.is_initialized():
+        return dist.get_rank() == 0
+    return True
+
+
+def _run_one_epoch_train(model, train_loader, optimizer, scaler, device, use_amp):
+    model.train()
+    train_loss = train_acc = train_total = 0
+
+    for images, targets in train_loader:
+        images = images.to(device)
+        optimizer.zero_grad()
+
+        # Automatic Mixed Precision (AMP) forward pass
+        with torch.cuda.amp.autocast(enabled=use_amp):
+            pred_logits, pred_boxes = model(images)
+            loss, metrics = detection_loss_set(
+                pred_logits, pred_boxes, targets,
+                num_classes=model.module.num_classes if hasattr(model, "module") else model.num_classes
+            )
+
+        # AMP backwards pawss
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+
+        bs = images.size(0)
+        train_loss += loss.item() * bs
+        train_acc += metrics["acc"] * bs
+        train_total += bs
+
+    if train_total == 0:
+        raise RuntimeError("Train dataloader yielded 0 samples.")
+
+    return train_loss / train_total, 100.0 * train_acc / train_total
+
+
+def _run_one_epoch_val(model, val_loader, device, use_amp):
+    model.eval()
+    val_loss = val_acc = val_total = 0
+
+    with torch.no_grad():
+        for images, targets in val_loader:
+            images = images.to(device)
+
+            with torch.cuda.amp.autocast(enabled=use_amp):
+                pred_logits, pred_boxes = model(images)
+                loss, metrics = detection_loss_set(
+                    pred_logits, pred_boxes, targets,
+                    num_classes=model.module.num_classes if hasattr(model, "module") else model.num_classes
+                )
+
+            bs = images.size(0)
+            val_loss += loss.item() * bs
+            val_acc += metrics["acc"] * bs
+            val_total += bs
+
+    return val_loss / val_total, 100.0 * val_acc / val_total
+
+
 # Main training loop
+def train_model(rank=0, world_size=1):
+    """
+    Main training function. Works for both single-GPU and DDP multi-GPU.
+    rank: process rank (0 = main process). Set automatically by torchrun.
+    world_size: total number of processes (= number of GPUs).
+    """
 
+    # DDP setup — initialize process group when running with multiple GPUs
+    is_ddp = world_size > 1
+    if is_ddp:
+        dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
+        torch.cuda.set_device(rank)
+        device = torch.device(f"cuda:{rank}")
+        print(f"[Rank {rank}] DDP initialized on {device}")
+    else:
+        device = check_device()
 
-def train_model():
+    # AMP scaler
+    use_amp = torch.cuda.is_available()
+    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
-    print("Starting training loop")
+    is_main = _is_main_process()
 
-    # MLflow setup
-    mlflow.set_tracking_uri(os.environ.get(
-        "MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
-    mlflow.set_experiment("custom_model")
-
-    # Log hyperparameters and dataset info to MLflow
-    with mlflow.start_run(run_name="custom_cnn_detection"):
+    # MLflow setup, only on rank 0 to avoid duplicate logging
+    if is_main:
+        print("Starting training loop")
+        mlflow.set_tracking_uri(os.environ.get(
+            "MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
+        mlflow.set_experiment("custom_model")
+        run = mlflow.start_run(run_name="custom_cnn_detection")
         mlflow.log_params({
             "model_type": "CustomCNN",
             "epochs": EPOCHS, "batch_size": BATCH_SIZE,
             "learning_rate": LEARNING_RATE, "weight_decay": WEIGHT_DECAY,
             "optimizer": "Adam", "scheduler": "ReduceLROnPlateau",
             "loss_cls": "CrossEntropy", "loss_bbox": "SmoothL1",
+            "num_gpus": world_size, "amp": use_amp,
+            "zero_stage": ZERO_STAGE,
         })
 
-        # Config decides which dataset path to use — dataloader figures out the format
-        dataset_path = (
-            config["path"]["sample_dataset_path"]
-            if config["settings"]["use_sample_dataset"]
-            else config["path"]["full_dataset_path"]
-        )
+    # Config decides which dataset path to use, dataloader figures out the format
+    dataset_path = (
+        config["path"]["sample_dataset_path"]
+        if config["settings"]["use_sample_dataset"]
+        else config["path"]["full_dataset_path"]
+    )
 
-        # Get dataloaders from dataloader.py
-        train_loader, val_loader, num_classes = get_dataloaders(
-            data_dir=dataset_path, batch_size=BATCH_SIZE
-        )
+    # Get dataloaders, use DistributedSampler in DDP mode so each GPU gets different data
+    train_loader, val_loader, num_classes = get_dataloaders(
+        data_dir=dataset_path,
+        batch_size=BATCH_SIZE,
+        num_workers=NUM_WORKERS,
+        distributed=is_ddp,
+        rank=rank,
+        world_size=world_size,
+    )
 
-        # from model.py
-        model = CustomCNN(num_classes=num_classes).to(device)
+    # Build model and move to device
+    model = CustomCNN(num_classes=num_classes).to(device)
 
-       # Print model summary using torchsummary (handles CUDA/non-CUDA devices)
-        summary_device = "cuda" if str(device) == "cuda" else "cpu"
+    # Print model summary only on rank 0
+    if is_main:
+        summary_device = "cuda" if str(device).startswith("cuda") else "cpu"
         print("\nModel summary:")
         summary(model.to(summary_device), (3, 64, 64), device=summary_device)
         model.to(device)
+    """
+    ZeRO optimizer via DeepSpeed (stages 1, 2, 3)
+    ZeRO stage 0 = disabled (standard DDP or single GPU)
+    ZeRO stage 1 = partition optimizer states across GPUs
+    ZeRO stage 2 = also partition gradients
+    ZeRO stage 3 = also partition model parameters
+    """
+    
+    if ZERO_STAGE > 0:
+        try:
+            ds_config = {
+                "train_micro_batch_size_per_gpu": BATCH_SIZE,
+                "optimizer": {
+                    "type": "Adam",
+                    "params": {"lr": LEARNING_RATE, "weight_decay": WEIGHT_DECAY}
+                },
+                "fp16": {"enabled": use_amp},
+                "zero_optimization": {"stage": ZERO_STAGE},
+            }
+            model, optimizer, _, _ = deepspeed.initialize(
+                model=model, config=ds_config
+            )
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="min", factor=0.5, patience=3)
+            if is_main:
+                print(f"DeepSpeed ZeRO stage {ZERO_STAGE} enabled")
+        except ImportError:
+            if is_main:
+                print("DeepSpeed not available, falling back to standard DDP/single GPU")
+            ZERO_STAGE = 0
+
+    # Standard DDP wrap (when not using DeepSpeed)
+    if ZERO_STAGE == 0:
+        if is_ddp:
+            # DDP wraps the model — gradients are averaged across GPUs automatically
+            model = DDP(model, device_ids=[rank])
+            if is_main:
+                print(f"DDP enabled across {world_size} GPUs")
 
         # optim and scheduler setup
         optimizer = optim.Adam(
@@ -70,79 +202,55 @@ def train_model():
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", factor=0.5, patience=3)
 
-        # Train the model
-        history = {"train_loss": [], "val_loss": [],
-                  
-                   "train_acc": [], "val_acc": []}
-        best_val_loss, best_epoch = float("inf"), 0
+    # Train the model
+    history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
+    best_val_loss, best_epoch = float("inf"), 0
 
-        print(f"\nTraining for {EPOCHS} epochs on {device}...\n")
-        print(
-            f"{'Epoch':>6}{'Train Loss':>12}{'Train Acc':>11}{'Val Loss':>10}{'Val Acc':>9}")
+    if is_main:
+        print(f"\nTraining for {EPOCHS} epochs on {device} "
+              f"({'DDP x' + str(world_size) + ' GPUs' if is_ddp else 'single GPU'}, "
+              f"AMP={'on' if use_amp else 'off'}, "
+              f"ZeRO={ZERO_STAGE if ZERO_STAGE > 0 else 'off'})...\n")
+        print(f"{'Epoch':>6}{'Train Loss':>12}{'Train Acc':>11}{'Val Loss':>10}{'Val Acc':>9}")
         print("-" * 55)
 
-        # Carbon tracking, only initialize if a CUDA GPU is actually present
-        carbon_available = torch.cuda.is_available()
-        if carbon_available:
-            tracker = CarbonTracker(
-                epochs=EPOCHS,
-                log_dir=config["path"]["run_base_dir"],
-                components="gpu",  # GPU only — skip CPU (no RAPL permissions on AI-LAB)
-            )
-            print("CarbonTracker: GPU tracking enabled")
-        else:
+    # Carbon tracking, only initialize if a CUDA GPU is actually present
+    # Only track on rank 0 to avoid duplicate carbon logging
+    carbon_available = torch.cuda.is_available() and is_main
+    if carbon_available:
+        tracker = CarbonTracker(
+            epochs=EPOCHS,
+            log_dir=config["path"]["run_base_dir"],
+            components="gpu",  # GPU only — skip CPU (no RAPL permissions on AI-LAB)
+        )
+        print("CarbonTracker: GPU tracking enabled")
+    else:
+        if is_main:
             print("CarbonTracker: no GPU detected, skipping carbon tracking")
 
-        # simple training loop with train/val phases and MLflow logging for now
-        for epoch in range(1, EPOCHS + 1):
+    # simple training loop with train/val phases and MLflow logging for now
+    for epoch in range(1, EPOCHS + 1):
 
-            # start tracking carbon for this epoch
-            if carbon_available:
-                tracker.epoch_start()
+        # start tracking carbon for this epoch
+        if carbon_available:
+            tracker.epoch_start()
 
-            # Training
-            model.train()
-            train_loss = train_acc = train_total = 0
-            for images, targets in train_loader:
-                images = images.to(device)
-                optimizer.zero_grad()
-                pred_logits, pred_boxes = model(images)
-                loss, metrics = detection_loss_set(
-                    pred_logits, pred_boxes, targets, num_classes=model.num_classes)
-                loss.backward()
-                optimizer.step()
-                bs = images.size(0)
-                train_loss += loss.item() * bs
-                train_acc += metrics["acc"] * bs
-                train_total += bs
+        # In DDP mode, set epoch on sampler so shuffling is different each epoch
+        if is_ddp and hasattr(train_loader.sampler, "set_epoch"):
+            train_loader.sampler.set_epoch(epoch)
 
-            if train_total == 0:
-                raise RuntimeError("Train dataloader yielded 0 samples.")
+        # Training
+        train_loss, train_acc = _run_one_epoch_train(
+            model, train_loader, optimizer, scaler, device, use_amp)
 
-            train_loss /= train_total
-            train_acc = 100.0 * train_acc / train_total
+        # Validation
+        val_loss, val_acc = _run_one_epoch_val(model, val_loader, device, use_amp)
 
-            # Validation
-            model.eval()
-            val_loss = val_acc = val_total = 0
-            with torch.no_grad():
-                for images, targets in val_loader:
-                    images = images.to(device)
-                    pred_logits, pred_boxes = model(images)
-                    loss, metrics = detection_loss_set(
-                        pred_logits, pred_boxes, targets, num_classes=model.num_classes)
-                    bs = images.size(0)
-                    val_loss += loss.item() * bs
-                    val_acc += metrics["acc"] * bs
-                    val_total += bs
+        scheduler.step(val_loss)
+        current_lr = optimizer.param_groups[0]["lr"]
 
-            val_loss /= val_total
-            val_acc = 100.0 * val_acc / val_total
-
-            scheduler.step(val_loss)
-            current_lr = optimizer.param_groups[0]["lr"]
-
-            # log mletrics to MLflow
+        # log metrics to MLflow — only on rank 0
+        if is_main:
             mlflow.log_metrics({
                 "train_loss": train_loss, "val_loss": val_loss,
                 "train_acc": train_acc,   "val_acc": val_acc,
@@ -150,38 +258,43 @@ def train_model():
             }, step=epoch)
             log_gpu_metrics(device, step=epoch)
 
-            history["train_loss"].append(train_loss)
-            history["val_loss"].append(val_loss)
-            history["train_acc"].append(train_acc)
-            history["val_acc"].append(val_acc)
+        history["train_loss"].append(train_loss)
+        history["val_loss"].append(val_loss)
+        history["train_acc"].append(train_acc)
+        history["val_acc"].append(val_acc)
 
-            print(
-                f"{epoch:>6}  {train_loss:>10.4f}  {train_acc:>9.2f}%  {val_loss:>9.4f}  {val_acc:>7.2f}%")
+        if is_main:
+            print(f"{epoch:>6}  {train_loss:>10.4f}  {train_acc:>9.2f}%  {val_loss:>9.4f}  {val_acc:>7.2f}%")
 
-            # save best model based on val_loss, and also save last model each epoch
+        # save best model based on val_loss, and also save last model each epoch
+        # Only rank 0 saves models to avoid file conflicts
+        if is_main:
+            # Unwrap DDP/DeepSpeed model for saving
+            model_state = model.module.state_dict() if hasattr(model, "module") else model.state_dict()
+
             if val_loss < best_val_loss:
                 best_val_loss, best_epoch = val_loss, epoch
                 torch.save(
-                    {"epoch": epoch, "model_state": model.state_dict(
-                    ), "val_loss": val_loss, "val_acc": val_acc},
+                    {"epoch": epoch, "model_state": model_state,
+                     "val_loss": val_loss, "val_acc": val_acc},
                     os.path.join(models_path, "best_model.pth"),
                 )
-                print(
-                    f"          ↳ New best model saved (val_loss={val_loss:.4f})")
+                print(f"          ↳ New best model saved (val_loss={val_loss:.4f})")
 
             torch.save(
-                {"epoch": epoch, "model_state": model.state_dict(
-                ), "val_loss": val_loss, "val_acc": val_acc},
+                {"epoch": epoch, "model_state": model_state,
+                 "val_loss": val_loss, "val_acc": val_acc},
                 os.path.join(models_path, "last_model.pth"),
             )
 
-            # end carbon tracking for this epoch    
-            if carbon_available:
-                tracker.epoch_end()
+        # end carbon tracking for this epoch
+        if carbon_available:
+            tracker.epoch_end()
 
+    # Post-training logging — only on rank 0
+    if is_main:
         print("\n" + "=" * 55)
-        print(
-            f"Training complete. Best epoch {best_epoch}, val_loss={best_val_loss:.4f}")
+        print(f"Training complete. Best epoch {best_epoch}, val_loss={best_val_loss:.4f}")
 
         # plot training curves and log to MLflow, along with the best model checkpoint
         fig = plot_training_curves(history)
@@ -198,13 +311,26 @@ def train_model():
             print("Carbon footprint logged to MLflow")
 
         # Register model in MLflow model registry if it meets performance criteria
+        # Unwrap DDP/DeepSpeed for logging
+        model_to_log = model.module if hasattr(model, "module") else model
         mlflow.pytorch.log_model(
-            model,
+            model_to_log,
             name="model",
             registered_model_name="CustomCNN",
         )
         print(f"Model registered in MLflow registry (val_loss={best_val_loss:.4f})")
+        mlflow.end_run()
+
+    # DDP cleanup
+    if is_ddp:
+        dist.destroy_process_group()
 
 
 if __name__ == "__main__":
-    train_model()
+    # torchrun sets LOCAL_RANK and WORLD_SIZE automatically when launching with multiple GPUs
+    # Single GPU: python src/main.py
+    # Multi GPU:  torchrun --nproc_per_node=2 src/main.py
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    world_size = int(os.environ.get("WORLD_SIZE", 1))
+
+    train_model(rank=local_rank, world_size=world_size)
