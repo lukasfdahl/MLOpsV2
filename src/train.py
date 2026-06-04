@@ -82,7 +82,11 @@ def train_model():
         print("-" * 55)
 
         # carbon tracking
-        tracker = CarbonTracker(epochs=EPOCHS, log_dir=config["path"]["run_base_dir"])
+        tracker = CarbonTracker(
+            epochs=EPOCHS,
+            log_dir=config["path"]["run_base_dir"],
+            components="gpu",  # only track GPU, skip CPU power (no permissions on AI-LAB...)
+        )
 
         # simple training loop with train/val phases and MLflow logging for now
         for epoch in range(1, EPOCHS + 1):
