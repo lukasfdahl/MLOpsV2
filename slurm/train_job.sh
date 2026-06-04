@@ -21,7 +21,7 @@ ulimit -n 65536
 echo "=== Training Job | $(date) | $(hostname) ==="
 cd $PROJECT
 
-# Pull latest code first
+# Pull latest code first (Source of truth is GitHub)
 echo "=== Syncing to latest code | $(date) ==="
 git fetch origin development
 git reset --hard origin/development
@@ -33,8 +33,16 @@ singularity exec --nv --bind $PROJECT:/app $CONTAINER \
 
 # Ensure full dataset is checked out from DVC cache
 echo "=== DVC Checkout | $(date) ==="
+
+# 1. Force remove any stale locks left by previously killed SLURM jobs
+rm -f .dvc/tmp/lock .dvc/tmp/rwlock
+
+# 2. Disable DVC analytics prompt to prevent silent headless hanging
+export DVC_NO_ANALYTICS=true
+
+# 3. Pull data (if missing) and checkout with verbose logging (-v)
 singularity exec $CONTAINER \
-    $VENV/bin/dvc checkout
+    bash -c "$VENV/bin/dvc pull -v && $VENV/bin/dvc checkout -v"
 
 # Read multi_gpu setting from config to decide single vs DDP launch
 NUM_GPUS=$(singularity exec $CONTAINER \
@@ -58,6 +66,10 @@ fi
 
 # Version the trained model with DVC
 echo "=== DVC model versioning | $(date) ==="
+
+# Remove locks again just in case the training step caused a weird state
+rm -f .dvc/tmp/lock .dvc/tmp/rwlock
+
 singularity exec $CONTAINER \
     $VENV/bin/dvc add runs/models/best_model.pth
 
@@ -73,8 +85,6 @@ git commit -m "model update: new best_model from training run"
 git push origin development
 
 # Launch MLflow UI for experiment tracking
-# To view: ssh -L 5000:ailab-l4-XX:5000 ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk
-# Then open http://localhost:5000 in your browser
 echo "=== Starting MLflow UI | $(date) ==="
 echo "To view results run on your local PC:"
 echo "  ssh -L 5000:$(hostname):5000 ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk"
