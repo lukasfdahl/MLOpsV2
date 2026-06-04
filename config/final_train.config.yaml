@@ -1,6 +1,6 @@
 settings:
   use_sample_dataset: False # Set to True to train locally (uses small 128 image dataset instead of full one)
-  ailab_training: False 
+  ailab_training: True # Set to True to use AILab's training environment, False to train locally 
 
 
 path:
