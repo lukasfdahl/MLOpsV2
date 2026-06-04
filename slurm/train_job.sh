@@ -50,3 +50,13 @@ git pull origin development --rebase
 git add runs/models/best_model.pth.dvc
 git commit -m "model update: new best_model from training run"
 git push origin development
+
+# Launch MLflow UI for experiment tracking
+# To view: ssh -L 5000:localhost:5000 ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk
+# Then open http://localhost:5000 in your browser
+echo "=== Starting MLflow UI | $(date) ==="
+echo "To view results run on your local PC:"
+echo "  ssh -L 5000:localhost:5000 ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk"
+echo "Then open: http://localhost:5000"
+singularity exec --bind $PROJECT:/app $CONTAINER \
+    bash -c "cd /app && mlflow ui --backend-store-uri sqlite:///mlflow.db --host 0.0.0.0 --port 5000"

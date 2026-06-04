@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torchvision.models import resnet101, ResNet101_Weights
 
 
 class CustomCNN(nn.Module):
@@ -9,28 +10,26 @@ class CustomCNN(nn.Module):
         self.num_classes = num_classes
         self.num_queries = num_queries
 
-        # Shared feature extractor
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 16, 3, padding=1),
-            nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.MaxPool2d(2),            # 64 → 32
+        # ResNet-101 backbone for feature extraction (~42M params in backbone)
+        # Pretrained on ImageNet for better feature representations
+        backbone = resnet101(weights=ResNet101_Weights.IMAGENET1K_V2)
 
-            nn.Conv2d(16, 32, 3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(2),            # 32 → 16
+        # Remove the final avgpool and fc layers — we only want the feature maps
+        self.features = nn.Sequential(*list(backbone.children())[:-2])
 
-            nn.Conv2d(32, 64, 3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2),            # 16 → 8
-        )
+        # Adaptive pool to get fixed 8x8 spatial size regardless of input resolution
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((8, 8))
 
-        # Shared FC trunk
+        # Shared FC trunk — 2048 channels from ResNet-101 layer4
         self.trunk = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(64 * 8 * 8, 256),
+            nn.Linear(2048 * 8 * 8, 1024),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, 256),
             nn.ReLU(),
             nn.Dropout(0.3),
         )
@@ -55,13 +54,15 @@ class CustomCNN(nn.Module):
     def forward(self, x: torch.Tensor):
 
         b = x.size(0)
-        feat = self.trunk(self.features(x))          # (B, 256)
+
+        # Extract features with ResNet-101 backbone
+        feat_map = self.features(x)              # (B, 2048, H', W')
+        feat_map = self.adaptive_pool(feat_map)  # (B, 2048, 8, 8)
+        feat = self.trunk(feat_map)              # (B, 256)
 
         # Broadcast feature vector across all query slots
-        q = self.query_embed.weight.unsqueeze(
-            0).expand(b, -1, -1)  # (B, Q, 256)
-        # (B, Q, 256)
-        h = feat.unsqueeze(1) + q
+        q = self.query_embed.weight.unsqueeze(0).expand(b, -1, -1)  # (B, Q, 256)
+        h = feat.unsqueeze(1) + q                                    # (B, Q, 256)
 
         pred_logits = self.cls_head(h)   # (B, Q, num_classes+1)
         pred_boxes = self.bbox_head(h)   # (B, Q, 4)
