@@ -215,11 +215,11 @@ def get_dataloaders(
 
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn,
-        num_workers=8, pin_memory=True, persistent_workers=True
+        num_workers=12, pin_memory=True, persistent_workers=True, prefetch_factor=4
     )
     val_loader = DataLoader(
         val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_fn,
-        num_workers=8, pin_memory=True, persistent_workers=True
+        num_workers=12, pin_memory=True, persistent_workers=True, prefetch_factor=4
     )
 
     return train_loader, val_loader, num_classes
