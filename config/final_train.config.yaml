@@ -1,6 +1,7 @@
 settings:
   use_sample_dataset: False # Set to True to train locally (uses small 128 image dataset instead of full one)
-  ailab_training: True # Set to True to use AILab's training environment, False to train locally 
+  ailab_training: True # Set to True to use AILab's training environment, False to train locally
+  skip_dvc_checkout: True # Set to False only when dataset has changed and needs re-checkout
 
 path:
   run_base_dir: runs                        # Used as a base path for files generated when running the code, like model files from training

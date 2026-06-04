@@ -32,28 +32,32 @@ singularity exec --nv --bind $PROJECT:/app $CONTAINER \
     pip install -r /app/requirements.txt --quiet
 
 # Ensure full dataset is checked out from DVC cache
-echo "=== DVC Checkout | $(date) ==="
+# Controlled by skip_dvc_checkout in config
+# set to False only when dataset has changed
+SKIP_DVC=$(singularity exec $CONTAINER \
+    python3 -c "import yaml; print(yaml.safe_load(open('/ceph/project/MLOPS_KLS/config/final_train.config.yaml'))['settings']['skip_dvc_checkout'])")
 
+if [ "$SKIP_DVC" = "True" ]; then
+    echo "=== DVC Checkout SKIPPED (skip_dvc_checkout=True in config) | $(date) ==="
+else
+    echo "=== DVC Checkout | $(date) ==="
 
-# 1. NUKE the entire temporary folder to clear ALL stuck SQLite locks and state
-#rm -rf .dvc/tmp/*
-#rm -f .git/index.lock
+    # Remove surface locks left by killed jobs, but KEEP the SQLite database
+    rm -f .dvc/tmp/lock .dvc/tmp/rwlock
+    rm -f .git/index.lock
 
-# 1. Remove surface locks left by killed jobs, but KEEP the SQLite database
-rm -f .dvc/tmp/lock .dvc/tmp/rwlock
-rm -f .git/index.lock
+    # Disable DVC analytics prompt to prevent silent headless hanging
+    export DVC_NO_ANALYTICS=true
 
-# 2. Disable DVC analytics prompt to prevent silent headless hanging
-export DVC_NO_ANALYTICS=true
+    # Pull new data
+    # echo "Pulling dataset updates from remote..."
+    # singularity exec $CONTAINER \
+    #     $VENV/bin/dvc pull -v
 
-# 3. Pull new data (COMMENTED OUT: Only uncomment this ONCE if you push new data to remote bucket!)
-# echo "Pulling dataset updates from remote..."
-# singularity exec $CONTAINER \
-#     $VENV/bin/dvc pull -v
-
-# 4. Checkout data directly from Ceph cache
-singularity exec $CONTAINER \
-    $VENV/bin/dvc checkout -v
+    # Checkout data directly from Ceph cache
+    singularity exec $CONTAINER \
+        $VENV/bin/dvc checkout -v
+fi
 
 # Read multi_gpu setting from config to decide single vs DDP launch
 NUM_GPUS=$(singularity exec $CONTAINER \
