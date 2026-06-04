@@ -30,10 +30,25 @@ pipeline {
                 sh "docker run --rm -v '${WORKSPACE}/data:/app/data' mlops-kls-container:${env.BUILD_ID}"
             }
         }
+
         stage("Model Training Run") {
             steps {
                 echo "Starting a training run"
                 sh "docker run --rm -v ${WORKSPACE}/data:/app/data mlops-kls-container:${env.BUILD_ID} python src/main.py"
+            }
+        }
+
+        stage("Evaluate and Register Model") {
+            steps {
+                echo "Evaluating model and registering if criteria met"
+                sh "docker run --rm -v ${WORKSPACE}/data:/app/data mlops-kls-container:${env.BUILD_ID} python src/evaluate.py"
+            }
+        }
+
+        stage("Deploy Model") {
+            steps {
+                echo "Deploying model to Production"
+                sh "docker run --rm -v ${WORKSPACE}/data:/app/data mlops-kls-container:${env.BUILD_ID} python src/deploy.py"
             }
         }
     }
