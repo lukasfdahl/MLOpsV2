@@ -7,7 +7,7 @@ matplotlib
 
 # log
 mlflow
-
+tqdm
 
 torchsummary
 

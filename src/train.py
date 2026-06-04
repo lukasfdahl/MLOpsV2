@@ -11,9 +11,11 @@ from config import config
 from model import CustomCNN
 from dataloader import get_dataloaders
 from utility.training import plot_training_curves, log_gpu_metrics, detection_loss_set
+from utility.testing import show_predictions
 from utility.hardware import check_device
 from carbontracker.tracker import CarbonTracker
 import deepspeed
+from tqdm import tqdm
 
 # Training hyperparameters from config
 EPOCHS = config["training"]["epochs"]
@@ -35,23 +37,26 @@ def _is_main_process():
     return True
 
 
-def _run_one_epoch_train(model, train_loader, optimizer, scaler, device, use_amp):
+def _run_one_epoch_train(model, train_loader, optimizer, scaler, device, use_amp, epoch, is_main):
     model.train()
     train_loss = train_acc = train_total = 0
 
-    for images, targets in train_loader:
+    device_type = "cuda" if device.type == "cuda" else "cpu"
+    pbar = tqdm(train_loader, desc=f"Epoch {epoch} [train]", leave=False, disable=not is_main)
+
+    for images, targets in pbar:
         images = images.to(device)
         optimizer.zero_grad()
 
         # Automatic Mixed Precision (AMP) forward pass
-        with torch.autocast(device_type=device.type, enabled=use_amp):
+        with torch.autocast(device_type=device_type, enabled=use_amp):
             pred_logits, pred_boxes = model(images)
             loss, metrics = detection_loss_set(
                 pred_logits, pred_boxes, targets,
                 num_classes=model.module.num_classes if hasattr(model, "module") else model.num_classes
             )
 
-        # AMP backwards pawss
+        # AMP backwards pass
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
@@ -61,21 +66,26 @@ def _run_one_epoch_train(model, train_loader, optimizer, scaler, device, use_amp
         train_acc += metrics["acc"] * bs
         train_total += bs
 
+        pbar.set_postfix(loss=f"{train_loss / train_total:.4f}", acc=f"{100.0 * train_acc / train_total:.2f}%")
+
     if train_total == 0:
         raise RuntimeError("Train dataloader yielded 0 samples.")
 
     return train_loss / train_total, 100.0 * train_acc / train_total
 
 
-def _run_one_epoch_val(model, val_loader, device, use_amp):
+def _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main):
     model.eval()
     val_loss = val_acc = val_total = 0
 
+    device_type = "cuda" if device.type == "cuda" else "cpu"
+    pbar = tqdm(val_loader, desc=f"Epoch {epoch} [val]  ", leave=False, disable=not is_main)
+
     with torch.no_grad():
-        for images, targets in val_loader:
+        for images, targets in pbar:
             images = images.to(device)
 
-            with torch.autocast(device_type=device.type, enabled=use_amp):
+            with torch.autocast(device_type=device_type, enabled=use_amp):
                 pred_logits, pred_boxes = model(images)
                 loss, metrics = detection_loss_set(
                     pred_logits, pred_boxes, targets,
@@ -86,6 +96,8 @@ def _run_one_epoch_val(model, val_loader, device, use_amp):
             val_loss += loss.item() * bs
             val_acc += metrics["acc"] * bs
             val_total += bs
+
+            pbar.set_postfix(loss=f"{val_loss / val_total:.4f}", acc=f"{100.0 * val_acc / val_total:.2f}%")
 
     return val_loss / val_total, 100.0 * val_acc / val_total
 
@@ -106,7 +118,7 @@ def train_model(rank=0, world_size=1):
         device = torch.device(f"cuda:{rank}")
         print(f"[Rank {rank}] DDP initialized on {device}")
     else:
-        device = check_device()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # AMP scaler
     use_amp = torch.cuda.is_available()
@@ -210,8 +222,6 @@ def train_model(rank=0, world_size=1):
               f"({'DDP x' + str(world_size) + ' GPUs' if is_ddp else 'single GPU'}, "
               f"AMP={'on' if use_amp else 'off'}, "
               f"ZeRO={ZERO_STAGE if ZERO_STAGE > 0 else 'off'})...\n")
-        print(f"{'Epoch':>6}{'Train Loss':>12}{'Train Acc':>11}{'Val Loss':>10}{'Val Acc':>9}")
-        print("-" * 55)
 
     # Carbon tracking, only initialize if a CUDA GPU is actually present
     # Only track on rank 0 to avoid duplicate carbon logging
@@ -228,7 +238,8 @@ def train_model(rank=0, world_size=1):
             print("CarbonTracker: no GPU detected, skipping carbon tracking")
 
     # simple training loop with train/val phases and MLflow logging for now
-    for epoch in range(1, EPOCHS + 1):
+    epoch_bar = tqdm(range(1, EPOCHS + 1), desc="Training", disable=not is_main)
+    for epoch in epoch_bar:
 
         # start tracking carbon for this epoch
         if carbon_available:
@@ -240,10 +251,10 @@ def train_model(rank=0, world_size=1):
 
         # Training
         train_loss, train_acc = _run_one_epoch_train(
-            model, train_loader, optimizer, scaler, device, use_amp)
+            model, train_loader, optimizer, scaler, device, use_amp, epoch, is_main)
 
         # Validation
-        val_loss, val_acc = _run_one_epoch_val(model, val_loader, device, use_amp)
+        val_loss, val_acc = _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main)
 
         scheduler.step(val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
@@ -263,7 +274,11 @@ def train_model(rank=0, world_size=1):
         history["val_acc"].append(val_acc)
 
         if is_main:
-            print(f"{epoch:>6}  {train_loss:>10.4f}  {train_acc:>9.2f}%  {val_loss:>9.4f}  {val_acc:>7.2f}%")
+            epoch_bar.set_postfix(
+                train_loss=f"{train_loss:.4f}", train_acc=f"{train_acc:.2f}%",
+                val_loss=f"{val_loss:.4f}", val_acc=f"{val_acc:.2f}%",
+            )
+            tqdm.write(f"Epoch {epoch:>3}/{EPOCHS}  train_loss={train_loss:.4f}  train_acc={train_acc:.2f}%  val_loss={val_loss:.4f}  val_acc={val_acc:.2f}%")
 
         # save best model based on val_loss, and also save last model each epoch
         # Only rank 0 saves models to avoid file conflicts
@@ -278,7 +293,7 @@ def train_model(rank=0, world_size=1):
                      "val_loss": val_loss, "val_acc": val_acc},
                     os.path.join(models_path, "best_model.pth"),
                 )
-                print(f"          ↳ New best model saved (val_loss={val_loss:.4f})")
+                tqdm.write(f"          ↳ New best model saved (val_loss={val_loss:.4f})")
 
             torch.save(
                 {"epoch": epoch, "model_state": model_state,
@@ -312,6 +327,14 @@ def train_model(rank=0, world_size=1):
         # Register model in MLflow model registry if it meets performance criteria
         # Unwrap DDP/DeepSpeed for logging
         model_to_log = model.module if hasattr(model, "module") else model
+
+        # Generate prediction examples on val set and log to MLflow
+        pred_img_path = os.path.join(config["path"]["run_base_dir"], "predictions.png")
+
+        # predic visual
+        show_predictions(model_to_log, val_loader, device, save_path=pred_img_path)
+        mlflow.log_artifact(pred_img_path)
+        print("Prediction examples logged to MLflow")
         mlflow.pytorch.log_model(
             model_to_log,
             name="model",
