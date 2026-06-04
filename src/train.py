@@ -25,6 +25,8 @@ WEIGHT_DECAY = config["training"]["weight_decay"]
 NUM_GPUS = config["training"].get("multi_gpu", 1)
 NUM_WORKERS = config["dataloader"].get("num_workers", 4)
 ZERO_STAGE = config["training"].get("zero_stage", 0)
+EARLY_STOPPING_PATIENCE = config["training"].get("early_stopping_patience", 10)
+WARMUP_EPOCHS = config["training"].get("warmup_epochs", 5)
 
 models_path = os.path.join(config["path"]["run_base_dir"], "models")
 os.makedirs(models_path, exist_ok=True)
@@ -191,7 +193,9 @@ def train_model(rank=0, world_size=1):
             model, optimizer, _, _ = deepspeed.initialize(
                 model=model, config=ds_config
             )
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            warmup_scheduler = optim.lr_scheduler.LinearLR(
+                optimizer, start_factor=0.1, end_factor=1.0, total_iters=WARMUP_EPOCHS)
+            plateau_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
                 optimizer, mode="min", factor=0.5, patience=3)
             if is_main:
                 print(f"DeepSpeed ZeRO stage {ZERO_STAGE} enabled")
@@ -210,18 +214,24 @@ def train_model(rank=0, world_size=1):
         # optim and scheduler setup
         optimizer = optim.Adam(
             model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        # Linear warmup for first WARMUP_EPOCHS, then hand off to ReduceLROnPlateau
+        warmup_scheduler = optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=0.1, end_factor=1.0, total_iters=WARMUP_EPOCHS)
+        plateau_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", factor=0.5, patience=3)
 
     # Train the model
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
     best_val_loss, best_epoch = float("inf"), 0
+    early_stopping_counter = 0
 
     if is_main:
         print(f"\nTraining for {EPOCHS} epochs on {device} "
               f"({'DDP x' + str(world_size) + ' GPUs' if is_ddp else 'single GPU'}, "
               f"AMP={'on' if use_amp else 'off'}, "
-              f"ZeRO={ZERO_STAGE if ZERO_STAGE > 0 else 'off'})...\n")
+              f"ZeRO={ZERO_STAGE if ZERO_STAGE > 0 else 'off'}, "
+              f"warmup={WARMUP_EPOCHS} epochs, "
+              f"early_stopping={EARLY_STOPPING_PATIENCE} epochs)...\n")
 
     # Carbon tracking, only initialize if a CUDA GPU is actually present
     # Only track on rank 0 to avoid duplicate carbon logging
@@ -256,7 +266,11 @@ def train_model(rank=0, world_size=1):
         # Validation
         val_loss, val_acc = _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main)
 
-        scheduler.step(val_loss)
+        # Warmup for first N epochs, then ReduceLROnPlateau takes over
+        if epoch <= WARMUP_EPOCHS:
+            warmup_scheduler.step()
+        else:
+            plateau_scheduler.step(val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
 
         # log metrics to MLflow — only on rank 0
@@ -288,18 +302,33 @@ def train_model(rank=0, world_size=1):
 
             if val_loss < best_val_loss:
                 best_val_loss, best_epoch = val_loss, epoch
+                early_stopping_counter = 0
                 torch.save(
                     {"epoch": epoch, "model_state": model_state,
                      "val_loss": val_loss, "val_acc": val_acc},
                     os.path.join(models_path, "best_model.pth"),
                 )
                 tqdm.write(f"          ↳ New best model saved (val_loss={val_loss:.4f})")
+            else:
+                early_stopping_counter += 1
+                tqdm.write(f"          ↳ No improvement ({early_stopping_counter}/{EARLY_STOPPING_PATIENCE})")
 
             torch.save(
                 {"epoch": epoch, "model_state": model_state,
                  "val_loss": val_loss, "val_acc": val_acc},
                 os.path.join(models_path, "last_model.pth"),
             )
+
+        # Early stopping check
+        if is_ddp:
+            counter_tensor = torch.tensor(early_stopping_counter, device=device)
+            dist.broadcast(counter_tensor, src=0)
+            early_stopping_counter = int(counter_tensor.item())
+
+        if early_stopping_counter >= EARLY_STOPPING_PATIENCE:
+            if is_main:
+                tqdm.write(f"\nEarly stopping triggered after {epoch} epochs (no improvement for {EARLY_STOPPING_PATIENCE} epochs)")
+            break
 
         # end carbon tracking for this epoch
         if carbon_available:
