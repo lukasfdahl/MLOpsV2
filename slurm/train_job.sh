@@ -40,9 +40,9 @@ rm -f .dvc/tmp/lock .dvc/tmp/rwlock
 # 2. Disable DVC analytics prompt to prevent silent headless hanging
 export DVC_NO_ANALYTICS=true
 
-# 3. Pull data (if missing) and checkout with verbose logging (-v)
+# 3. Checkout data directly from Ceph cache
 singularity exec $CONTAINER \
-    bash -c "$VENV/bin/dvc pull -v && $VENV/bin/dvc checkout -v"
+    $VENV/bin/dvc checkout -v
 
 # Read multi_gpu setting from config to decide single vs DDP launch
 NUM_GPUS=$(singularity exec $CONTAINER \
