@@ -40,7 +40,7 @@ pipeline {
             }
             steps {
                 echo "Starting a local training run with sample dataset"
-                sh "docker run --rm --privileged -v ${WORKSPACE}/data:/app/data mlops-kls-container:${env.GIT_COMMIT} python src/main.py"
+                sh "docker run --rm --privileged -v ${WORKSPACE}/data:/app/data -e TRAIN_CONFIG=config/small_train.config.yaml mlops-kls-container:${env.GIT_COMMIT} python src/main.py"
             }
         }
 
