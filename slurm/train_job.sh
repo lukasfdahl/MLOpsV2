@@ -13,18 +13,27 @@ VENV=~/mlops_venv
 echo "=== Training Job | $(date) | $(hostname) ==="
 cd $PROJECT
 
+# Pull latest code first
+echo "=== Git pull | $(date) ==="
+git pull origin development --rebase
+
+# Install project requirements into the venv
+echo "=== Installing requirements | $(date) ==="
+singularity exec $CONTAINER \
+    $VENV/bin/pip install -r requirements.txt --quiet
+
 # Ensure full dataset is checked out from DVC cache
 echo "=== DVC Checkout | $(date) ==="
 singularity exec $CONTAINER \
     $VENV/bin/dvc checkout
 
 # Run training with final config (full dataset)
+echo "=== Starting Training | $(date) ==="
 singularity exec --nv --bind $PROJECT:/app $CONTAINER \
     bash -c "cd /app && TRAIN_CONFIG=config/final_train.config.yaml python src/main.py"
 
-
 # Version the trained model with DVC
-echo "DVC model versioning | $(date)"
+echo "=== DVC model versioning | $(date) ==="
 singularity exec $CONTAINER \
     $VENV/bin/dvc add runs/models/best_model.pth
 
@@ -34,6 +43,7 @@ singularity exec $CONTAINER \
 # Commit the updated .dvc pointer file back to git
 git config user.email "ailab@mlops"
 git config user.name "AI-LAB"
+git pull origin development --rebase
 git add runs/models/best_model.pth.dvc
 git commit -m "model update: new best_model from training run"
 git push origin development
