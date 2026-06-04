@@ -103,6 +103,7 @@ def evaluate_model():
         })
         mlflow.log_artifact(pred_path, artifact_path="predictions")
         mlflow.log_artifact(checkpoint_path, artifact_path="model_checkpoint")
+        mlflow.log_artifact("README.md", artifact_path="model_card")
 
         if val_loss < VAL_LOSS_THRESHOLD:
             print(f"Model passed threshold (val_loss={val_loss:.4f} < {VAL_LOSS_THRESHOLD}) — registering in MLflow.")
