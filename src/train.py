@@ -81,15 +81,17 @@ def train_model():
             f"{'Epoch':>6}{'Train Loss':>12}{'Train Acc':>11}{'Val Loss':>10}{'Val Acc':>9}")
         print("-" * 55)
 
-        # Carbon tracking — tracks energy and CO2 for the full training run
-        # ignore_errors=True gracefully skips on environments without supported hardware (e.g. CI/CD Docker)
-        tracker = CarbonTracker(
-            epochs=EPOCHS,
-            log_dir=config["path"]["run_base_dir"],
-            components="gpu",  # GPU only — skip CPU (no RAPL permissions on AI-LAB)
-            ignore_errors=True,  # gracefully skip if no supported hardware found
-        )
-        carbon_available = True
+        # Carbon tracking, only initialize if a CUDA GPU is actually present
+        carbon_available = torch.cuda.is_available()
+        if carbon_available:
+            tracker = CarbonTracker(
+                epochs=EPOCHS,
+                log_dir=config["path"]["run_base_dir"],
+                components="gpu",  # GPU only — skip CPU (no RAPL permissions on AI-LAB)
+            )
+            print("CarbonTracker: GPU tracking enabled")
+        else:
+            print("CarbonTracker: no GPU detected, skipping carbon tracking")
 
         # simple training loop with train/val phases and MLflow logging for now
         for epoch in range(1, EPOCHS + 1):
