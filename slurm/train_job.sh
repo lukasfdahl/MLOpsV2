@@ -34,13 +34,19 @@ singularity exec --nv --bind $PROJECT:/app $CONTAINER \
 # Ensure full dataset is checked out from DVC cache
 echo "=== DVC Checkout | $(date) ==="
 
-# 1. Force remove any stale locks left by previously killed SLURM jobs
-rm -f .dvc/tmp/lock .dvc/tmp/rwlock
+# 1. NUKE the entire temporary folder to clear ALL stuck SQLite locks and state
+rm -rf .dvc/tmp/*
+rm -f .git/index.lock
 
 # 2. Disable DVC analytics prompt to prevent silent headless hanging
 export DVC_NO_ANALYTICS=true
 
-# 3. Checkout data directly from Ceph cache
+# 3. Pull new data 
+# echo "Pulling dataset updates from remote..."
+# singularity exec $CONTAINER \
+#     $VENV/bin/dvc pull -v
+
+# 4. Checkout data directly from Ceph cache
 singularity exec $CONTAINER \
     $VENV/bin/dvc checkout -v
 
@@ -68,7 +74,8 @@ fi
 echo "=== DVC model versioning | $(date) ==="
 
 # Remove locks again just in case the training step caused a weird state
-rm -f .dvc/tmp/lock .dvc/tmp/rwlock
+rm -rf .dvc/tmp/*
+rm -f .git/index.lock
 
 singularity exec $CONTAINER \
     $VENV/bin/dvc add runs/models/best_model.pth
