@@ -5,6 +5,7 @@
 #SBATCH --gres=gpu:2
 #SBATCH --mem=48G
 #SBATCH --cpus-per-task=30
+#SBATCH --begin=now
 
 # fail - exit!
 set -e
