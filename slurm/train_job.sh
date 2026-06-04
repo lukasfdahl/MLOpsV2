@@ -6,6 +6,8 @@
 #SBATCH --mem=24G
 #SBATCH --cpus-per-task=15
 
+set -e
+
 CONTAINER=/ceph/container/pytorch/pytorch_25.09.sif
 PROJECT=/ceph/project/MLOPS_KLS
 VENV=~/mlops_venv
@@ -20,8 +22,8 @@ git reset --hard origin/development
 
 # Install project requirements into the venv
 echo "=== Installing requirements | $(date) ==="
-singularity exec $CONTAINER \
-    $VENV/bin/pip install -r requirements.txt --quiet
+singularity exec --nv --bind $PROJECT:/app $CONTAINER \
+    pip install -r /app/requirements.txt --quiet
 
 # Ensure full dataset is checked out from DVC cache
 echo "=== DVC Checkout | $(date) ==="
