@@ -50,8 +50,17 @@ def _run_one_epoch_train(model, train_loader, optimizer, scaler, device, use_amp
         images = images.to(device)
         optimizer.zero_grad()
 
+        # When DeepSpeed fp16 is active the model weights are HalfTensor.
+        # DeepSpeed does NOT cast inputs automatically, so we do it here.
+        # For standard AMP (ZeRO=0) use_amp is True but model stays float32,
+        # so we only cast when the model's parameters are already fp16.
+        param = next(model.parameters())
+        if param.dtype == torch.float16:
+            images = images.half()
+
         # Automatic Mixed Precision (AMP) forward pass
-        with torch.autocast(device_type=device_type, enabled=use_amp):
+        # (torch.autocast is a no-op inside DeepSpeed; DS handles mp internally)
+        with torch.autocast(device_type=device_type, enabled=use_amp and param.dtype != torch.float16):
             pred_logits, pred_boxes = model(images)
             loss, metrics = detection_loss_set(
                 pred_logits, pred_boxes, targets,
@@ -87,7 +96,11 @@ def _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main):
         for images, targets in pbar:
             images = images.to(device)
 
-            with torch.autocast(device_type=device_type, enabled=use_amp):
+            param = next(model.parameters())
+            if param.dtype == torch.float16:
+                images = images.half()
+
+            with torch.autocast(device_type=device_type, enabled=use_amp and param.dtype != torch.float16):
                 pred_logits, pred_boxes = model(images)
                 loss, metrics = detection_loss_set(
                     pred_logits, pred_boxes, targets,
@@ -105,7 +118,7 @@ def _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main):
 
 
 # Main training loop
-def train_model(rank=None, world_size=None):
+def train_model(rank=None, world_size=None, override_epochs=None, override_lr=None, override_warmup=None):
     """
     Main training function. Works for both single-GPU and DDP multi-GPU.
     rank: process rank (0 = main process). Set automatically by torchrun.
@@ -115,6 +128,12 @@ def train_model(rank=None, world_size=None):
         rank = int(os.environ.get("LOCAL_RANK", 0))
     if world_size is None:
         world_size = int(os.environ.get("WORLD_SIZE", 1))
+
+    # Allow fine-tuning phase to override key hyperparams without changing config
+    global EPOCHS, LEARNING_RATE, WARMUP_EPOCHS
+    if override_epochs  is not None: EPOCHS        = override_epochs
+    if override_lr      is not None: LEARNING_RATE = override_lr
+    if override_warmup  is not None: WARMUP_EPOCHS = override_warmup
 
     # DDP setup — initialize process group when running with multiple GPUs
     is_ddp = world_size > 1
@@ -191,7 +210,7 @@ def train_model(rank=None, world_size=None):
                     "type": "Adam",
                     "params": {"lr": LEARNING_RATE, "weight_decay": WEIGHT_DECAY}
                 },
-                "fp16": {"enabled": use_amp},
+                "bf16": {"enabled": use_amp},  # bf16 is more stable than fp16 on L4 (Ada arch)
                 "zero_optimization": {"stage": ZERO_STAGE},
                 # Built-in warmup
                 # DeepSpeedZeroOptimizer. Steps-per-epoch is approximate (~100);
