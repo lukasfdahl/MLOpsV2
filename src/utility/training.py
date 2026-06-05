@@ -86,8 +86,8 @@ def greedy_match(pred_boxes, tgt_boxes):
             torch.empty(0, dtype=torch.long, device=pred_boxes.device),
         )
 
-    # cost [K,N] — cdist doesn't support BFloat16, cast to float32
-    cost = torch.cdist(pred_boxes.float(), tgt_boxes.float(), p=1)
+    # cost [K,N]
+    cost = torch.cdist(pred_boxes, tgt_boxes, p=1)
 
     matched_p = []
     matched_t = []
@@ -118,6 +118,10 @@ def detection_loss_set(
     pred_boxes:  [B,K,4]
     targets: list of dicts with "labels":[N], "boxes":[N,4]
     """
+    # Cast to float32 — loss ops (cross_entropy, cdist) don't support BFloat16
+    pred_logits = pred_logits.float()
+    pred_boxes  = pred_boxes.float()
+
     device = pred_logits.device
     B, K, Cp1 = pred_logits.shape
     noobj = num_classes  # index of no-object class
