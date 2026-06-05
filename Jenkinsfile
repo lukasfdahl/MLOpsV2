@@ -80,6 +80,59 @@ pipeline {
                 }
             }
         }
+
+        stage("Post-Training Optimization") {
+            when {
+                expression {
+                    def config = readFile('config/final_train.config.yaml')
+                    return config.contains('ailab_training: True')
+                }
+            }
+            steps {
+                echo "Running quantization, pruning and benchmarking"
+                sshagent(['ailab-ssh-key']) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no \
+                            ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk \
+                            "cd /ceph/project/MLOPS_KLS && \
+                            singularity exec /ceph/container/pytorch/pytorch_25.09.sif \
+                            python src/post_training.py"
+                    '''
+                }
+            }
+        }
+
+
+
+        stage("Post-Training Optimization - AI-LAB") {
+            when {
+                expression {
+                    def cfg = readFile('config/final_train.config.yaml')
+                    return cfg.contains('ailab_training: True')
+                }
+            }
+            steps {
+                echo "Submitting post-training SLURM job (quantize + prune + fine-tune)"
+                sshagent(['ailab-ssh-key']) {
+                    sh '''
+                        JOB_ID=$(ssh -o StrictHostKeyChecking=no \
+                            ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk \
+                            "sbatch /ceph/project/MLOPS_KLS/slurm/post_training_job.sh" \
+                            | awk '{print $NF}')
+                        echo "Submitted post-training SLURM job: $JOB_ID"
+
+                        for i in $(seq 1 480); do
+                            STATUS=$(ssh -o StrictHostKeyChecking=no \
+                                ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk \
+                                "squeue -j $JOB_ID -h -o '%T' 2>/dev/null || echo DONE")
+                            echo "[$i/480] Post-train job $JOB_ID: $STATUS"
+                            [ -z "$STATUS" ] || [ "$STATUS" = "DONE" ] && break
+                            sleep 30
+                        done
+                    '''
+                }
+            }
+        }
     }
 
     post {
