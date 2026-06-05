@@ -103,7 +103,10 @@ singularity exec $CONTAINER \
 # Commit the updated .dvc pointer file back to git
 git config user.email "ailab@mlops"
 git config user.name "AI-LAB"
+git add -A
+git stash
 git pull origin development --rebase
+git stash pop
 git add runs/models/best_model.pth.dvc
 git commit -m "model update: new best_model from training run"
 git push origin development

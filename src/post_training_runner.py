@@ -36,8 +36,9 @@ def main():
     # Quantization benchmark
     print("\n--- Quantization ---")
     quantized_model = quantize_model(model)
+    cpu = torch.device("cpu")
     orig_acc,  orig_time  = benchmark(model,           val_loader, device)
-    quant_acc, quant_time = benchmark(quantized_model, val_loader, device)
+    quant_acc, quant_time = benchmark(quantized_model, val_loader, cpu)  # quantize_dynamic is CPU-only
     print(f"Original  | acc={orig_acc:.4f}%  time={orig_time:.4f}s")
     print(f"Quantized | acc={quant_acc:.4f}%  time={quant_time:.4f}s")
 
@@ -49,7 +50,7 @@ def main():
     print("\n--- Final optimized model (50% prune + int8 quant) ---")
     optimized_model = prune_model(copy.deepcopy(model), val_loader, device, 0.5)
     optimized_model = torch.ao.quantization.quantize_dynamic(
-        optimized_model, {nn.Linear}, dtype=torch.qint8)
+        optimized_model.cpu(), {nn.Linear}, dtype=torch.qint8)  # quantize_dynamic is CPU-only
 
     opt_dir = os.path.join(models_path, "optimized")
     os.makedirs(opt_dir, exist_ok=True)
