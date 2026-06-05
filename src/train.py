@@ -237,6 +237,8 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
         except ImportError:
             if is_main:
                 print("DeepSpeed not available, falling back to standard DDP/single GPU")
+            # Fall through to standard optimizer setup below
+            ZERO_STAGE = 0
 
     # Standard DDP wrap (when not using DeepSpeed)
     if ZERO_STAGE == 0:

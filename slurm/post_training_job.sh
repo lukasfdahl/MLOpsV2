@@ -2,7 +2,7 @@
 #SBATCH --job-name=mlops-post-train
 #SBATCH --output=/ceph/project/MLOPS_KLS/runs/slurm_post_%j.log
 #SBATCH --time=4:00:00
-#SBATCH --gres=gpu:0 
+#SBATCH --gres=gpu:1
 #SBATCH --mem=24G
 #SBATCH --cpus-per-task=15
 #SBATCH --begin=now
@@ -20,7 +20,7 @@ singularity exec --bind $PROJECT:/app $CONTAINER \
     pip install -r /app/requirements.txt --quiet
 
 echo "=== Running quantization, pruning sweep and fine-tune | $(date) ==="
-singularity exec --bind $PROJECT:/app $CONTAINER \
+singularity exec --nv --bind $PROJECT:/app $CONTAINER \
     bash -c "cd /app && TRAIN_CONFIG=config/final_train.config.yaml python src/post_training_runner.py"
 
 # Version the optimized model with DVC

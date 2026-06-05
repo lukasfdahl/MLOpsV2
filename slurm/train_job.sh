@@ -72,9 +72,9 @@ if [ "$NUM_GPUS" -gt 1 ]; then
     TOTAL_MEM=$(( NUM_GPUS * 24 ))
     TOTAL_CPUS=$(( NUM_GPUS * 15 ))
     echo "Scaling SLURM to $NUM_GPUS GPUs / ${TOTAL_CPUS} CPUs / ${TOTAL_MEM}G RAM"
-    scontrol update JobId=$SLURM_JOB_ID \\
-        NumGPUs=$NUM_GPUS \\
-        NumCPUs=$TOTAL_CPUS \\
+    scontrol update JobId=$SLURM_JOB_ID \
+        NumGPUs=$NUM_GPUS \
+        NumCPUs=$TOTAL_CPUS \
         MinMemoryNode=${TOTAL_MEM}G || true
 fi
 
