@@ -6,8 +6,13 @@ pipeline {
     }
 
     parameters {
-        // Set to true to skip local build/test/push and only run AI-LAB stages
-        booleanParam(name: 'AILAB_ONLY', defaultValue: false, description: 'Skip local stages, only run AI-LAB training + deploy')
+        booleanParam(name: 'RUN_BUILD',         defaultValue: true,  description: 'Build Docker image')
+        booleanParam(name: 'RUN_TESTS',         defaultValue: true,  description: 'Run unit tests')
+        booleanParam(name: 'RUN_PUSH',          defaultValue: true,  description: 'Push Docker image to Docker Hub')
+        booleanParam(name: 'RUN_TRAIN_LOCAL',   defaultValue: true,  description: 'Run local training (sample dataset)')
+        booleanParam(name: 'RUN_TRAIN_AILAB',   defaultValue: true,  description: 'Run training on AI-LAB (full dataset)')
+        booleanParam(name: 'RUN_POST_TRAINING', defaultValue: true,  description: 'Run post-training optimization on AI-LAB')
+        booleanParam(name: 'RUN_DEPLOY',        defaultValue: true,  description: 'Evaluate and deploy model')
     }
 
     options {
@@ -26,7 +31,7 @@ pipeline {
         }
 
         stage("Build Docker Image") {
-            when { expression { return !params.AILAB_ONLY } }
+            when { expression { return params.RUN_BUILD } }
             steps {
                 echo "Building the Docker container:"
                 sh "docker build -f docker/DockerFile -t mlops-kls-container:${env.GIT_COMMIT} ." // Tagged with git commit hash for traceability
@@ -34,7 +39,7 @@ pipeline {
         }
 
         stage("Run Unit Tests") {
-            when { expression { return !params.AILAB_ONLY } }
+            when { expression { return params.RUN_TESTS } }
             steps {
                 echo "Running Pytest inside container"
                 // To mount the data folder and run the unit tests (${WORKSPACE} is the folder for the current build run)
@@ -43,7 +48,7 @@ pipeline {
         }
 
         stage("Push Docker Image to Registry") {
-            when { expression { return !params.AILAB_ONLY } }
+            when { expression { return params.RUN_PUSH } }
             steps {
                 echo "Pushing Docker image to Docker Hub"
                 withCredentials([usernamePassword(
@@ -67,7 +72,7 @@ pipeline {
         stage("Model Training Run - Local (sample dataset)") {
             when {
                 expression {
-                    if (params.AILAB_ONLY) return false
+                    if (!params.RUN_TRAIN_LOCAL) return false
                     def config = readFile('config/small_train.config.yaml')
                     return config.contains('use_sample_dataset: True')
                 }
@@ -81,6 +86,7 @@ pipeline {
         stage("Model Training Run - AI-LAB (full dataset)") {
             when {
                 expression {
+                    if (!params.RUN_TRAIN_AILAB) return false
                     def config = readFile('config/final_train.config.yaml')
                     return config.contains('ailab_training: True')
                 }
@@ -118,6 +124,7 @@ pipeline {
         stage("Post-Training Optimization - AI-LAB") {
             when {
                 expression {
+                    if (!params.RUN_POST_TRAINING) return false
                     def cfg = readFile('config/final_train.config.yaml')
                     return cfg.contains('ailab_training: True')
                 }
@@ -146,6 +153,7 @@ pipeline {
         }
 
         stage("Evaluate and Deploy Model") {
+            when { expression { return params.RUN_DEPLOY } }
             steps {
                 echo "Syncing MLflow DB from AI-LAB and evaluating model for deployment"
                 sshagent(['ailab-ssh-key']) {
