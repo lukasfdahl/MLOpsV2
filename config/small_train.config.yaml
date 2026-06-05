@@ -9,8 +9,8 @@ path:
   full_dataset_path: data/dvc               # path to full dataset (DVC version)
 
 dataloader:
-  num_workers: 8       # Number of workers for data loading
-  prefetch_factor: 4    # Number of batches to prefetch for each worker
+  num_workers: 2       # Number of workers for data loading
+  prefetch_factor: 2    # Number of batches to prefetch for each worker
   pin_memory: True      # Whether to pin memory during data loading
 
 training:
