@@ -130,7 +130,7 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
         world_size = int(os.environ.get("WORLD_SIZE", 1))
 
     # Allow fine-tuning phase to override key hyperparams without changing config
-    global EPOCHS, LEARNING_RATE, WARMUP_EPOCHS
+    global EPOCHS, LEARNING_RATE, WARMUP_EPOCHS, ZERO_STAGE
     if override_epochs  is not None: EPOCHS        = override_epochs
     if override_lr      is not None: LEARNING_RATE = override_lr
     if override_warmup  is not None: WARMUP_EPOCHS = override_warmup
