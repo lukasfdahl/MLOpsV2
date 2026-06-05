@@ -1,6 +1,10 @@
 pipeline {
     agent any // Tells Jenkins to run this on any available "worker"
 
+    environment {
+        DOCKER_REGISTRY = "kaspersiebrands"  // Docker Hub username
+    }
+
     options {
         timestamps() // Adds clock times to the logs
     }
@@ -28,6 +32,27 @@ pipeline {
                 echo "Running Pytest inside container"
                 // To mount the data folder and run the unit tests (${WORKSPACE} is the folder for the current build run)
                 sh "docker run --rm -v '${WORKSPACE}/data:/app/data' mlops-kls-container:${env.GIT_COMMIT}"
+            }
+        }
+
+        stage("Push Docker Image to Registry") {
+            steps {
+                echo "Pushing Docker image to Docker Hub"
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
+                        docker tag mlops-kls-container:${env.GIT_COMMIT} \
+                            ${env.DOCKER_REGISTRY}/mlops-kls-container:${env.GIT_COMMIT}
+                        docker tag mlops-kls-container:${env.GIT_COMMIT} \
+                            ${env.DOCKER_REGISTRY}/mlops-kls-container:latest
+                        docker push ${env.DOCKER_REGISTRY}/mlops-kls-container:${env.GIT_COMMIT}
+                        docker push ${env.DOCKER_REGISTRY}/mlops-kls-container:latest
+                    """
+                }
             }
         }
 
@@ -131,6 +156,23 @@ pipeline {
                         done
                     '''
                 }
+            }
+        }
+
+        stage("Evaluate and Deploy Model") {
+            steps {
+                echo "Checking model performance and deploying to MLflow registry if criteria are met"
+                sh """
+                    docker run --rm \
+                        -v ${WORKSPACE}/runs:/app/runs \
+                        -v ${WORKSPACE}/mlruns:/app/mlruns \
+                        -v ${WORKSPACE}/model_card.yaml:/app/model_card.yaml \
+                        -e MLFLOW_TRACKING_URI=sqlite:///mlflow.db \
+                        -e MODEL_CARD_PATH=model_card.yaml \
+                        --workdir /app \
+                        ${env.DOCKER_REGISTRY}/mlops-kls-container:${env.GIT_COMMIT} \
+                        python src/deploy.py
+                """
             }
         }
     }
