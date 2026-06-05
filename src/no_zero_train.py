@@ -103,7 +103,7 @@ def _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main):
 
 
 # Main training loop
-def train_model(rank=None, world_size=None):
+def train_model(rank=None, world_size=None, override_epochs=None, override_lr=None, override_warmup=None):
     """
     Main training function. Works for both single-GPU and DDP multi-GPU.
     rank: process rank (0 = main process). Set automatically by torchrun.
@@ -113,6 +113,12 @@ def train_model(rank=None, world_size=None):
         rank = int(os.environ.get("LOCAL_RANK", 0))
     if world_size is None:
         world_size = int(os.environ.get("WORLD_SIZE", 1))
+
+    # Allow fine-tuning phase to override key hyperparams without changing config
+    global EPOCHS, LEARNING_RATE, WARMUP_EPOCHS
+    if override_epochs  is not None: EPOCHS        = override_epochs
+    if override_lr      is not None: LEARNING_RATE = override_lr
+    if override_warmup  is not None: WARMUP_EPOCHS = override_warmup
 
     # DDP setup — initialize process group when running with multiple GPUs
     is_ddp = world_size > 1
@@ -233,10 +239,11 @@ def train_model(rank=None, world_size=None):
         val_loss, val_acc = _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main)
 
         # Warmup for first N epochs, then ReduceLROnPlateau takes over
-        if epoch <= WARMUP_EPOCHS:
-            warmup_scheduler.step()
-        else:
-            plateau_scheduler.step(val_loss)
+        if warmup_scheduler is not None and plateau_scheduler is not None:
+            if epoch <= WARMUP_EPOCHS:
+                warmup_scheduler.step()
+            else:
+                plateau_scheduler.step(val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
 
         # log metrics to MLflow — only on rank 0
