@@ -202,23 +202,29 @@ pipeline {
                     '''
                 }
 
+                // Pull the trained model from the DVC remote. 
+                // The webdav remote needs credentials to READ
+                withCredentials([usernamePassword(credentialsId: 'dvc-webdav-creds',
+                                                  usernameVariable: 'DVC_USER',
+                                                  passwordVariable: 'DVC_PASS')]) {
+                    sh """
+                        mkdir -p ${WORKSPACE}/runs/models
+                        docker run --rm \
+                            -v ${WORKSPACE}:/app \
+                            --workdir /app \
+                            -e DVC_USER="\$DVC_USER" \
+                            -e DVC_PASS="\$DVC_PASS" \
+                            ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
+                            sh -c 'dvc remote modify --local casaremote user "\$DVC_USER" && dvc remote modify --local casaremote password "\$DVC_PASS" && dvc pull runs/models/best_model.pth; rc=\$?; rm -f .dvc/config.local; exit \$rc' || {
+                                echo "ERROR: could not pull the model from the DVC remote."
+                                echo "Checked pointer runs/models/best_model.pth.dvc against casaremote (webdav)."
+                                echo "Verify the 'dvc-webdav-creds' Jenkins credential and that training pushed to the same remote."
+                                exit 1
+                            }
+                    """
+                }
+
                 sh """
-                    mkdir -p ${WORKSPACE}/runs/models
-
-                    # Pull the model from the DVC remote. FAIL the stage if it is missing —
-                    # a green build that serves no model is not reproducible.
-                    docker run --rm \
-                        -v ${WORKSPACE}:/app \
-                        --workdir /app \
-                        ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
-                        dvc pull runs/models/best_model.pth || {
-                            echo "ERROR: model not found in DVC remote."
-                            echo "The committed pointer runs/models/best_model.pth.dvc has no backing data in the remote."
-                            echo "Fix: run a full cycle with RUN_TRAIN_AILAB=true (train_job.sh pushes + verifies the model),"
-                            echo "     or on AI-LAB re-push the existing file: dvc add runs/models/best_model.pth && dvc push"
-                            exit 1
-                        }
-
                     docker compose -f docker-compose.monitoring.yml up -d || docker-compose -f docker-compose.monitoring.yml up -d
 
                     # Detect the worker's real IP — the build can land on any GPU worker,
