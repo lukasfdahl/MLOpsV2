@@ -20,4 +20,5 @@ sbatch \
     --gres=gpu:${NUM_GPUS} \
     --mem=${MEM}G \
     --cpus-per-task=${CPUS} \
+    --exclude=ailab-l4-04 \
     $PROJECT/slurm/train_job.sh
