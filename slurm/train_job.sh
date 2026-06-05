@@ -27,11 +27,7 @@ ulimit -n 65536
 echo "=== Training Job | $(date) | $(hostname) ==="
 cd $PROJECT
 
-# Pull latest code first (Source of truth is GitHub)
-echo "=== Syncing to latest code | $(date) ==="
-git fetch origin development
-git reset --hard origin/development
-
+# Code is already synced by Jenkins rsync before this job was submitted
 # Install project requirements into the venv
 echo "=== Installing requirements | $(date) ==="
 singularity exec --nv --bind $PROJECT:/app $CONTAINER \

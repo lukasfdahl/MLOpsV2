@@ -27,7 +27,6 @@ def main():
 
     _, val_loader, _ = get_dataloaders(
         num_workers=config["dataloader"].get("num_workers", 4),
-        prefetch_factor=config["dataloader"].get("prefetch_factor", 2),
     )
     model = CustomCNN(num_classes=NUM_CLASSES).to(device)
     ckpt = torch.load(CHECKPOINT, map_location=device)
