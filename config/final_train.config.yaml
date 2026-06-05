@@ -14,7 +14,7 @@ dataloader:
   pin_memory: True      # Whether to pin memory during data loading
 
 training:
-  epochs: 50
+  epochs: 1
   batch_size: 1536
   learning_rate: 0.00225
   weight_decay: 0.0005
