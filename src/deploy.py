@@ -101,9 +101,13 @@ def main() -> int:
 
         # Log updated model card and deployment event to the training run
         with mlflow.start_run(run_id=version.run_id):
-            mlflow.log_artifact(MODEL_CARD_PATH, artifact_path="model_card")
             mlflow.log_param("deployment_status", "Production")
             mlflow.log_param("deployed_at", deployed_at)
+            try:
+                # Artifact store may point to AI-LAB Ceph — skip gracefully if unreachable
+                mlflow.log_artifact(MODEL_CARD_PATH, artifact_path="model_card")
+            except Exception as e:
+                print(f"  (model card artifact not written to artifact store: {e})")
 
         print(f"Model card updated and logged to MLflow run {version.run_id}")
         print("Deployment complete.")
