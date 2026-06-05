@@ -5,6 +5,11 @@ pipeline {
         DOCKER_REGISTRY = "kaspersiebrands"  // Docker Hub username
     }
 
+    parameters {
+        // Set to true to skip local build/test/push and only run AI-LAB stages
+        booleanParam(name: 'AILAB_ONLY', defaultValue: false, description: 'Skip local stages, only run AI-LAB training + deploy')
+    }
+
     options {
         timestamps() // Adds clock times to the logs
     }
@@ -21,6 +26,7 @@ pipeline {
         }
 
         stage("Build Docker Image") {
+            when { expression { return !params.AILAB_ONLY } }
             steps {
                 echo "Building the Docker container:"
                 sh "docker build -f docker/DockerFile -t mlops-kls-container:${env.GIT_COMMIT} ." // Tagged with git commit hash for traceability
@@ -28,6 +34,7 @@ pipeline {
         }
 
         stage("Run Unit Tests") {
+            when { expression { return !params.AILAB_ONLY } }
             steps {
                 echo "Running Pytest inside container"
                 // To mount the data folder and run the unit tests (${WORKSPACE} is the folder for the current build run)
@@ -36,6 +43,7 @@ pipeline {
         }
 
         stage("Push Docker Image to Registry") {
+            when { expression { return !params.AILAB_ONLY } }
             steps {
                 echo "Pushing Docker image to Docker Hub"
                 withCredentials([usernamePassword(
@@ -59,8 +67,9 @@ pipeline {
         stage("Model Training Run - Local (sample dataset)") {
             when {
                 expression {
+                    if (params.AILAB_ONLY) return false
                     def config = readFile('config/small_train.config.yaml')
-                    return config.contains('use_sample_dataset: True') // Fixed: True not False
+                    return config.contains('use_sample_dataset: True')
                 }
             }
             steps {
@@ -89,7 +98,7 @@ pipeline {
 
                         JOB_ID=$(ssh -o StrictHostKeyChecking=no \
                             ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk \
-                            "sbatch /ceph/project/MLOPS_KLS/slurm/train_job.sh" \
+                            "bash /ceph/project/MLOPS_KLS/slurm/submit_train.sh" \
                             | awk '{print $NF}')
                         echo "Submitted SLURM job: $JOB_ID"
 

@@ -8,6 +8,7 @@ from config import config
 from model import CustomCNN
 from dataloader import get_dataloaders
 from utility.training import detection_loss_set
+from carbontracker.tracker import CarbonTracker
 
 # Config 
 CHECKPOINT  = os.path.join(config["path"]["run_base_dir"], "models", "best_model.pth")
@@ -86,6 +87,17 @@ def start_inference():
         batch_size=BATCH_SIZE,
     )
 
+    # Carbon tracking for inference — treat the full inference pass as one epoch
+    carbon_log = os.path.join(config["path"]["run_base_dir"], "carbontracker_inference")
+    os.makedirs(carbon_log, exist_ok=True)
+    use_carbon = torch.cuda.is_available()
+    if use_carbon:
+        tracker = CarbonTracker(epochs=1, log_dir=carbon_log, components="gpu")
+        tracker.epoch_start()
+        print("CarbonTracker: tracking inference carbon footprint")
+    else:
+        print("CarbonTracker: no GPU detected, skipping carbon tracking for inference")
+
     # Original model (fp32, CUDA if available)
     cuda = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_fp32 = load_model(cuda)
@@ -116,6 +128,11 @@ def start_inference():
           f"  {img_ms_int8-img_ms_fp32:>+10.2f}")
     print(f"\n  Note: fp32 runs on {cuda}, int8 runs on CPU.")
     print(f"{'='*55}\n")
+
+    if use_carbon:
+        tracker.epoch_end()
+        tracker.stop()
+        print(f"Carbon footprint log saved to: {carbon_log}")
 
 
 if __name__ == "__main__":

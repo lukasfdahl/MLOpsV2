@@ -15,8 +15,9 @@ NUM_CLASSES = 80
 
 
 def main():
-    #should be cpu
-    device = torch.device("cpu")
+    # Quantization (quantize_dynamic) is CPU-only, but benchmarking and
+    # pruning benefit from GPU. Use CUDA if available.
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Post-training optimization starting (device={device})")
 
     # Load best model
@@ -24,7 +25,10 @@ def main():
         raise FileNotFoundError(
             f"No checkpoint at {CHECKPOINT} — run training first.")
 
-    _, val_loader, _ = get_dataloaders()
+    _, val_loader, _ = get_dataloaders(
+        num_workers=config["dataloader"].get("num_workers", 4),
+        prefetch_factor=config["dataloader"].get("prefetch_factor", 2),
+    )
     model = CustomCNN(num_classes=NUM_CLASSES).to(device)
     ckpt = torch.load(CHECKPOINT, map_location=device)
     model.load_state_dict(ckpt["model_state"])
