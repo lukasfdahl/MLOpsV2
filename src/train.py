@@ -48,7 +48,6 @@ def _run_one_epoch_train(model, train_loader, optimizer, scaler, device, use_amp
 
     for images, targets in pbar:
         images = images.to(device)
-        optimizer.zero_grad()
 
         # When DeepSpeed fp16 is active the model weights are HalfTensor.
         # DeepSpeed does NOT cast inputs automatically, so we do it here.
@@ -70,10 +69,16 @@ def _run_one_epoch_train(model, train_loader, optimizer, scaler, device, use_amp
                 num_classes=model.module.num_classes if hasattr(model, "module") else model.num_classes
             )
 
-        # AMP backwards pass
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+        # Backward + optimizer step
+        # DeepSpeed manages its own gradient scaling when bf16/fp16 is active —
+        # use model.backward() / model.step() in that case.
+        if ds_mixed and hasattr(model, "backward"):
+            model.backward(loss)
+            model.step()
+        else:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
         bs = images.size(0)
         train_loss += loss.item() * bs
@@ -317,7 +322,10 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
                 warmup_scheduler.step()
             else:
                 plateau_scheduler.step(val_loss)
-        current_lr = optimizer.param_groups[0]["lr"]
+        try:
+            current_lr = optimizer.param_groups[0]["lr"]
+        except (AttributeError, IndexError):
+            current_lr = LEARNING_RATE  # DeepSpeed optimizer may not expose param_groups
 
         # log metrics to MLflow — only on rank 0
         if is_main:
