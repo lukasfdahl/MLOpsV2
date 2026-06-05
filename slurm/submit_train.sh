@@ -7,9 +7,8 @@
 PROJECT=/ceph/project/MLOPS_KLS
 CONTAINER=/ceph/container/pytorch/pytorch_25.09.sif
 
-# Suppress all warnings (e.g. pynvml FutureWarning) so only the value is captured
-NUM_GPUS=$(singularity exec --bind $PROJECT:/app $CONTAINER \
-    python3 -W ignore -c "import yaml; print(yaml.safe_load(open('/app/config/final_train.config.yaml'))['training']['multi_gpu'])" 2>/dev/null)
+# Read multi_gpu directly with grep — no singularity, no warnings
+NUM_GPUS=$(grep 'multi_gpu:' $PROJECT/config/final_train.config.yaml | awk '{print $2}')
 
 echo "Read NUM_GPUS='${NUM_GPUS}' from config"
 MEM=$(( NUM_GPUS * 24 ))
