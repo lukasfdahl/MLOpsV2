@@ -85,6 +85,25 @@ pipeline {
             }
         }
 
+        stage("Sync Code to AI-LAB") {
+            when {
+                expression { return params.RUN_TRAIN_AILAB || params.RUN_POST_TRAINING }
+            }
+            steps {
+                echo "Syncing latest code to AI-LAB"
+                sshagent(['ailab-ssh-key']) {
+                    sh '''
+                        rsync -az -e "ssh -o StrictHostKeyChecking=no" \
+                            --filter=':- .gitignore' \
+                            --exclude='.git' \
+                            --exclude='.dvc/cache' \
+                            --exclude='data/dvc' \
+                            ./ ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk:/ceph/project/MLOPS_KLS/
+                    '''
+                }
+            }
+        }
+
         stage("Model Training Run - AI-LAB (full dataset)") {
             when {
                 expression {
@@ -94,16 +113,9 @@ pipeline {
                 }
             }
             steps { // Fixed: removed extra closing brace
-                echo "Syncing code to AI-LAB and submitting SLURM job"
+                echo "Submitting training SLURM job"
                 sshagent(['ailab-ssh-key']) {
                     sh '''
-                        rsync -az -e "ssh -o StrictHostKeyChecking=no" \
-                            --filter=':- .gitignore' \
-                            --exclude='.git' \
-                            --exclude='.dvc/cache' \
-                            --exclude='data/dvc' \
-                            ./ ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk:/ceph/project/MLOPS_KLS/
-
                         JOB_ID=$(ssh -o StrictHostKeyChecking=no \
                             ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk \
                             "bash /ceph/project/MLOPS_KLS/slurm/submit_train.sh" \
