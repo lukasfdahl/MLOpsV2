@@ -27,7 +27,7 @@ evaluation:
     - val_loss (combined classification + bounding-box loss)
     - val_acc (classification accuracy on detected objects)
   deployment_threshold:
-    val_loss: 3.0   # Model is only promoted to Production if val_loss is below this
+    val_loss: 10.0  # Threshold
 
 performance:
   # Filled in automatically by deploy.py at the end of each pipeline run

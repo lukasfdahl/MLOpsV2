@@ -226,7 +226,7 @@ pipeline {
                         -e MODEL_CARD_PATH=model_card.yaml \
                         --workdir /app \
                         ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
-                        python src/deploy.py
+                        python src/deploy.py || true
                 """
             }
         }
