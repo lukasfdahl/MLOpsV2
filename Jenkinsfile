@@ -106,29 +106,6 @@ pipeline {
             }
         }
 
-        stage("Post-Training Optimization") {
-            when {
-                expression {
-                    def config = readFile('config/final_train.config.yaml')
-                    return config.contains('ailab_training: True')
-                }
-            }
-            steps {
-                echo "Running quantization, pruning and benchmarking"
-                sshagent(['ailab-ssh-key']) {
-                    sh '''
-                        ssh -o StrictHostKeyChecking=no \
-                            ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk \
-                            "cd /ceph/project/MLOPS_KLS && \
-                            singularity exec /ceph/container/pytorch/pytorch_25.09.sif \
-                            python src/post_training.py"
-                    '''
-                }
-            }
-        }
-
-
-
         stage("Post-Training Optimization - AI-LAB") {
             when {
                 expression {
@@ -161,13 +138,20 @@ pipeline {
 
         stage("Evaluate and Deploy Model") {
             steps {
-                echo "Checking model performance and deploying to MLflow registry if criteria are met"
+                echo "Syncing MLflow DB from AI-LAB and evaluating model for deployment"
+                sshagent(['ailab-ssh-key']) {
+                    // Pull the MLflow DB from AI-LAB so deploy.py can read training results
+                    sh '''
+                        rsync -az -e "ssh -o StrictHostKeyChecking=no" \
+                            ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk:/ceph/project/MLOPS_KLS/mlflow.db \
+                            ${WORKSPACE}/mlflow.db
+                    '''
+                }
                 sh """
                     docker run --rm \
-                        -v ${WORKSPACE}/runs:/app/runs \
-                        -v ${WORKSPACE}/mlruns:/app/mlruns \
+                        -v ${WORKSPACE}/mlflow.db:/app/mlflow.db \
                         -v ${WORKSPACE}/model_card.yaml:/app/model_card.yaml \
-                        -e MLFLOW_TRACKING_URI=sqlite:///mlflow.db \
+                        -e MLFLOW_TRACKING_URI=sqlite:////app/mlflow.db \
                         -e MODEL_CARD_PATH=model_card.yaml \
                         --workdir /app \
                         ${env.DOCKER_REGISTRY}/mlops-kls-container:${env.GIT_COMMIT} \
