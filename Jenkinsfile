@@ -174,6 +174,7 @@ pipeline {
                     docker run --rm \
                         -v ${WORKSPACE}/data:/app/data \
                         -v ${WORKSPACE}/runs:/app/runs \
+                        -v ${WORKSPACE}/src:/app/src \
                         --workdir /app \
                         ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
                         python src/drift.py
