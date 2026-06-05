@@ -105,7 +105,7 @@ pipeline {
                         JOB_ID=$(ssh -o StrictHostKeyChecking=no \
                             ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk \
                             "bash /ceph/project/MLOPS_KLS/slurm/submit_train.sh" \
-                            | awk '{print $NF}')
+                            | grep "Submitted batch job" | awk '{print $NF}')
                         echo "Submitted SLURM job: $JOB_ID"
 
                         for i in $(seq 1 240); do
