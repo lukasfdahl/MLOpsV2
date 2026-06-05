@@ -78,7 +78,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
         $CONTAINER \
         bash -c "cd /app && TRAIN_CONFIG=config/final_train.config.yaml \
         torchrun --nproc_per_node=$NUM_GPUS \
-        --master_addr=localhost --master_port=29500 \
+        --master_addr=localhost --master_port=$((29500 + SLURM_JOB_ID % 1000)) \
         src/main.py"
 else
     # Single GPU training
