@@ -10,8 +10,9 @@ path:
 
 dataloader:
   num_workers: 12       # Number of workers for data loading
-  prefetch_factor: 6    # Number of batches to prefetch for each worker
-  pin_memory: True      # Whether to pin memory during data loading
+  prefetch_factor: 12    # Number of batches to prefetch for each worker
+  pin_memory: True         # Whether to pin memory during data loading
+  persistent_workers: True # Keep workers alive between epochs
 
 training:
   epochs: 1

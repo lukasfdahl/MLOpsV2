@@ -9,9 +9,10 @@ from PIL import Image
 from config import config
 
 
-NUM_WORKERS = config["dataloader"].get("num_workers", 4)      # Number of workers for data loading
-PREFETCH_FACTOR = config["dataloader"].get("prefetch_factor", 4)  # Number of batches to prefetch for each worker
-PIN_MEMORY = config["dataloader"].get("pin_memory", True)     # Whether to pin memory during data loading
+NUM_WORKERS        = config["dataloader"].get("num_workers", 4)
+PREFETCH_FACTOR    = config["dataloader"].get("prefetch_factor", 4)
+PIN_MEMORY         = config["dataloader"].get("pin_memory", True)
+PERSISTENT_WORKERS = config["dataloader"].get("persistent_workers", True)
 
 
 # avoid to many open files
@@ -239,14 +240,14 @@ def get_dataloaders(
         sampler=train_sampler,
         collate_fn=collate_fn,
         num_workers=num_workers, pin_memory=PIN_MEMORY,
-        persistent_workers=True, prefetch_factor=PREFETCH_FACTOR
+        persistent_workers=PERSISTENT_WORKERS, prefetch_factor=PREFETCH_FACTOR
     )
     val_loader = DataLoader(
         val_ds, batch_size=batch_size, shuffle=False,
         sampler=val_sampler,
         collate_fn=collate_fn,
         num_workers=num_workers, pin_memory=PIN_MEMORY,
-        persistent_workers=True, prefetch_factor=PREFETCH_FACTOR
+        persistent_workers=PERSISTENT_WORKERS, prefetch_factor=PREFETCH_FACTOR
     )
 
     return train_loader, val_loader, num_classes
