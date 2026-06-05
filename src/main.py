@@ -93,7 +93,7 @@ def optimize_model(device):
     )
 
 if __name__ == "__main__":
+    # main.py is the entry point for training only.
+    # Post-training optimization (quantize/prune) is handled by post_training_job.sh via SLURM.
     device = check_device()
     run_training()
-    optimize_model(device)
-    main_inference()  # Not implimented
