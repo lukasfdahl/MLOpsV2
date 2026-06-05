@@ -9,7 +9,8 @@
 /runs/models/best_model.pth
 /runs/models/last_model.pth
 /runs/models/pruned_model.pth
-/runs/models/optimized/
+/runs/models/optimized/*.pth
+/runs/models/optimized/*.png
 
 # MLflow
 mlflow.db
