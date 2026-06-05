@@ -173,8 +173,11 @@ pipeline {
         stage("Start Monitoring Stack") {
             when { expression { return params.RUN_MONITORING } }
             steps {
-                echo "Starting Prometheus + Grafana monitoring stack"
+                echo "Pulling latest model from DVC and starting monitoring stack"
                 sh """
+                    // Pull the trained model so the inference API has a checkpoint
+                    dvc pull runs/models/best_model.pth || echo "DVC pull failed or model not yet versioned, continuing..."
+
                     docker-compose -f docker-compose.monitoring.yml up -d
                     echo "Monitoring stack started:"
                     echo "  Grafana:    http://localhost:3000  (admin/admin)"

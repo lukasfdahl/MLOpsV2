@@ -326,15 +326,17 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
             mlflow.log_artifacts(carbon_log, name="carbontracker")
             print("Carbon footprint logged to MLflow")
 
-        # Register model in MLflow model registry if it meets performance criteria
-        # Unwrap DDP for logging
-        model_to_log = model.module if hasattr(model, "module") else model
+        # Build a clean CPU model from the saved checkpoint — avoids pickling
+        # the DDP process group which MLflow cannot serialize.
+        model_to_log = CustomCNN(num_classes=num_classes)
+        _ckpt = torch.load(os.path.join(models_path, "best_model.pth"), map_location="cpu")
+        model_to_log.load_state_dict(_ckpt["model_state"])
+        model_to_log.eval()
 
         # Generate prediction examples on val set and log to MLflow
         pred_img_path = os.path.join(config["path"]["run_base_dir"], "predictions.png")
 
-        # predic visual
-        show_predictions(model_to_log, val_loader, device, save_path=pred_img_path)
+        show_predictions(model_to_log, val_loader, torch.device("cpu"), save_path=pred_img_path)
         mlflow.log_artifact(pred_img_path)
         print("Prediction examples logged to MLflow")
         mlflow.pytorch.log_model(
