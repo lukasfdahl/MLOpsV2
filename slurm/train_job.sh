@@ -2,10 +2,13 @@
 #SBATCH --job-name=mlops-train
 #SBATCH --output=/ceph/project/MLOPS_KLS/runs/slurm_%j.log
 #SBATCH --time=12:00:00
-#SBATCH --gres=gpu:2
-#SBATCH --mem=48G
-#SBATCH --cpus-per-task=30
+#SBATCH --gres=gpu:1         
+#SBATCH --mem=24G         
+#SBATCH --cpus-per-task=15 
 #SBATCH --begin=now
+
+# AI-LAB L4 limits per GPU: 15 CPUs, 24 GB RAM
+#   1 GPU -> 15 CPUs, 24G   |   2 GPUs -> 30 CPUs, 48G
 
 # fail - exit!
 set -e
@@ -63,6 +66,17 @@ fi
 # Read multi_gpu setting from config to decide single vs DDP launch
 NUM_GPUS=$(singularity exec --bind $PROJECT:/app $CONTAINER \
     python3 -c "import yaml; print(yaml.safe_load(open('/app/config/final_train.config.yaml'))['training']['multi_gpu'])")
+
+# (SBATCH header defaults to 1; upgrade if config wants more)
+if [ "$NUM_GPUS" -gt 1 ]; then
+    TOTAL_MEM=$(( NUM_GPUS * 24 ))
+    TOTAL_CPUS=$(( NUM_GPUS * 15 ))
+    echo "Scaling SLURM to $NUM_GPUS GPUs / ${TOTAL_CPUS} CPUs / ${TOTAL_MEM}G RAM"
+    scontrol update JobId=$SLURM_JOB_ID \\
+        NumGPUs=$NUM_GPUS \\
+        NumCPUs=$TOTAL_CPUS \\
+        MinMemoryNode=${TOTAL_MEM}G || true
+fi
 
 echo "=== Starting Training | multi_gpu=$NUM_GPUS | $(date) ==="
 
