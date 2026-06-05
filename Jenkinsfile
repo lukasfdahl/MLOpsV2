@@ -186,21 +186,62 @@ pipeline {
         stage("Start Monitoring Stack") {
             when { expression { return params.RUN_MONITORING } }
             steps {
-                echo "Pulling model from DVC and starting monitoring stack"
+                echo "Refreshing model pointer, pulling model from DVC, and starting monitoring stack"
+
+                // Refresh the committed DVC pointer so we serve the EXACT model trained + pushed
+                // on AI-LAB during this build, not a stale workspace pointer. Non-fatal: if the
+                // refresh can't run we fall back to the checked-out pointer.
+                withCredentials([usernamePassword(credentialsId: 'github-kls-bot',
+                                                  usernameVariable: 'GIT_USER',
+                                                  passwordVariable: 'GIT_TOKEN')]) {
+                    sh '''
+                        git fetch -q "https://$GIT_USER:$GIT_TOKEN@github.com/lukasfdahl/MLOpsV2.git" development \
+                            && git checkout FETCH_HEAD -- runs/models/best_model.pth.dvc \
+                            && echo "Refreshed best_model.pth.dvc to latest on development" \
+                            || echo "Pointer refresh skipped; using the checked-out pointer"
+                    '''
+                }
+
                 sh """
                     mkdir -p ${WORKSPACE}/runs/models
-                    # Run dvc pull inside Docker which already has DVC installed
+
+                    # Pull the model from the DVC remote. FAIL the stage if it is missing —
+                    # a green build that serves no model is not reproducible.
                     docker run --rm \
                         -v ${WORKSPACE}:/app \
                         --workdir /app \
                         ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
-                        dvc pull runs/models/best_model.pth || echo "DVC pull failed, continuing..."
+                        dvc pull runs/models/best_model.pth || {
+                            echo "ERROR: model not found in DVC remote."
+                            echo "The committed pointer runs/models/best_model.pth.dvc has no backing data in the remote."
+                            echo "Fix: run a full cycle with RUN_TRAIN_AILAB=true (train_job.sh pushes + verifies the model),"
+                            echo "     or on AI-LAB re-push the existing file: dvc add runs/models/best_model.pth && dvc push"
+                            exit 1
+                        }
 
                     docker compose -f docker-compose.monitoring.yml up -d || docker-compose -f docker-compose.monitoring.yml up -d
-                    echo "Monitoring stack started:"
-                    echo "  Grafana:    http://172.24.198.42:3000  (admin/admin)"
-                    echo "  Prometheus: http://172.24.198.42:9090"
-                    echo "  API:        http://172.24.198.42:8000/health"
+
+                    # Detect the worker's real IP — the build can land on any GPU worker,
+                    # so a hardcoded address is wrong as soon as it runs elsewhere.
+                    HOST_IP=\$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \\K\\S+' || hostname -I | awk '{print \$1}')
+
+                    # Wait until the API actually answers before claiming success.
+                    echo "Waiting for inference API on :8000 ..."
+                    HEALTHY=0
+                    for i in \$(seq 1 30); do
+                        if curl -sf http://localhost:8000/health >/dev/null 2>&1; then HEALTHY=1; break; fi
+                        sleep 2
+                    done
+                    if [ \$HEALTHY -eq 1 ]; then
+                        echo "Inference API is healthy."
+                    else
+                        echo "WARNING: inference API did not respond on :8000 after 60s — check 'docker logs mlops-inference-api'"
+                    fi
+
+                    echo "Monitoring stack started on host \$HOST_IP:"
+                    echo "  Grafana:    http://\$HOST_IP:3000  (admin/admin)"
+                    echo "  Prometheus: http://\$HOST_IP:9090"
+                    echo "  API:        http://\$HOST_IP:8000/health"
                 """
             }
         }
@@ -226,7 +267,7 @@ pipeline {
                         -e MODEL_CARD_PATH=model_card.yaml \
                         --workdir /app \
                         ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
-                        python src/deploy.py || true
+                        python src/deploy.py
                 """
             }
         }

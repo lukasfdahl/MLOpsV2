@@ -101,6 +101,17 @@ singularity exec $CONTAINER \
 singularity exec $CONTAINER \
     $VENV/bin/dvc push
 
+# Verify the model actually landed in the remote BEFORE committing the pointer to git.
+# Without this, git can reference a model the remote does not have (a dangling pointer),
+# which is exactly what makes `dvc pull` fail in downstream pipeline runs.
+echo "=== Verifying model is in DVC remote before committing pointer | $(date) ==="
+PUSH_STATUS=$(singularity exec $CONTAINER $VENV/bin/dvc status -c 2>&1 || true)
+echo "$PUSH_STATUS"
+if echo "$PUSH_STATUS" | grep -q "best_model.pth"; then
+    echo "ERROR: best_model.pth still missing from the remote after push — aborting before committing pointer."
+    exit 1
+fi
+
 # Commit the updated .dvc pointer file back to git
 git config user.email "ailab@mlops"
 git config user.name "AI-LAB"

@@ -33,6 +33,16 @@ singularity exec $CONTAINER \
 singularity exec $CONTAINER \
     ~/mlops_venv/bin/dvc push
 
+# Verify the optimized model is in the remote before committing its pointer to git,
+# so git never references data the remote does not have.
+echo "=== Verifying optimized model is in DVC remote before committing pointer | $(date) ==="
+PUSH_STATUS=$(singularity exec $CONTAINER ~/mlops_venv/bin/dvc status -c 2>&1 || true)
+echo "$PUSH_STATUS"
+if echo "$PUSH_STATUS" | grep -q "optimized_weights.pth"; then
+    echo "ERROR: optimized_weights.pth still missing from the remote after push — aborting before committing pointer."
+    exit 1
+fi
+
 git config user.email "ailab@mlops"
 git config user.name "AI-LAB"
 git add -A
