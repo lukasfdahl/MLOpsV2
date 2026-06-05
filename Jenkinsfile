@@ -188,7 +188,7 @@ pipeline {
             steps {
                 echo "Pulling latest model from DVC and starting monitoring stack"
                 sh """
-                    // Pull the trained model so the inference API has a checkpoint
+                    # Pull the trained model so the inference API has a checkpoint
                     dvc pull runs/models/best_model.pth || echo "DVC pull failed or model not yet versioned, continuing..."
 
                     docker-compose -f docker-compose.monitoring.yml up -d
@@ -216,10 +216,11 @@ pipeline {
                     docker run --rm \
                         -v ${WORKSPACE}/mlflow.db:/app/mlflow.db \
                         -v ${WORKSPACE}/model_card.yaml:/app/model_card.yaml \
+                        -v ${WORKSPACE}/src:/app/src \
                         -e MLFLOW_TRACKING_URI=sqlite:////app/mlflow.db \
                         -e MODEL_CARD_PATH=model_card.yaml \
                         --workdir /app \
-                        ${env.DOCKER_REGISTRY}/mlops-kls-container:${env.GIT_COMMIT} \
+                        ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
                         python src/deploy.py
                 """
             }
