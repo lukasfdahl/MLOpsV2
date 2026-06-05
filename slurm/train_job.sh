@@ -2,9 +2,11 @@
 #SBATCH --job-name=mlops-train
 #SBATCH --output=/ceph/project/MLOPS_KLS/runs/slurm_%j.log
 #SBATCH --time=12:00:00
-#SBATCH --gres=gpu:1         
-#SBATCH --mem=24G         
-#SBATCH --cpus-per-task=15 
+#SBATCH --gres=gpu:1
+#SBATCH --mem=24G
+#SBATCH --cpus-per-task=15
+# NOTE: GPU/mem/CPU counts are overridden at submit time by slurm/submit_train.sh
+#       which reads multi_gpu from final_train.config.yaml.
 #SBATCH --begin=now
 
 # AI-LAB L4 limits per GPU: 15 CPUs, 24 GB RAM
@@ -67,16 +69,7 @@ fi
 NUM_GPUS=$(singularity exec --bind $PROJECT:/app $CONTAINER \
     python3 -c "import yaml; print(yaml.safe_load(open('/app/config/final_train.config.yaml'))['training']['multi_gpu'])")
 
-# (SBATCH header defaults to 1; upgrade if config wants more)
-if [ "$NUM_GPUS" -gt 1 ]; then
-    TOTAL_MEM=$(( NUM_GPUS * 24 ))
-    TOTAL_CPUS=$(( NUM_GPUS * 15 ))
-    echo "Scaling SLURM to $NUM_GPUS GPUs / ${TOTAL_CPUS} CPUs / ${TOTAL_MEM}G RAM"
-    scontrol update JobId=$SLURM_JOB_ID \
-        NumGPUs=$NUM_GPUS \
-        NumCPUs=$TOTAL_CPUS \
-        MinMemoryNode=${TOTAL_MEM}G || true
-fi
+echo "Training with NUM_GPUS=$NUM_GPUS (SBATCH allocated: 2 GPUs)"
 
 echo "=== Starting Training | multi_gpu=$NUM_GPUS | $(date) ==="
 
