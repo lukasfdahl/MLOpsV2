@@ -57,10 +57,13 @@ def _run_one_epoch_train(model, train_loader, optimizer, scaler, device, use_amp
         param = next(model.parameters())
         if param.dtype == torch.float16:
             images = images.half()
+        elif param.dtype == torch.bfloat16:
+            images = images.to(torch.bfloat16)
 
         # Automatic Mixed Precision (AMP) forward pass
         # (torch.autocast is a no-op inside DeepSpeed; DS handles mp internally)
-        with torch.autocast(device_type=device_type, enabled=use_amp and param.dtype != torch.float16):
+        ds_mixed = param.dtype in (torch.float16, torch.bfloat16)
+        with torch.autocast(device_type=device_type, enabled=use_amp and not ds_mixed):
             pred_logits, pred_boxes = model(images)
             loss, metrics = detection_loss_set(
                 pred_logits, pred_boxes, targets,
@@ -97,8 +100,11 @@ def _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main):
             images = images.to(device)
 
             param = next(model.parameters())
+
             if param.dtype == torch.float16:
                 images = images.half()
+            elif param.dtype == torch.bfloat16:
+                images = images.to(torch.bfloat16)
 
             with torch.autocast(device_type=device_type, enabled=use_amp and param.dtype != torch.float16):
                 pred_logits, pred_boxes = model(images)
