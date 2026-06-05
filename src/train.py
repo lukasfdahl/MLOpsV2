@@ -158,7 +158,7 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # AMP scaler
-    use_amp = torch.cuda.is_available()
+    use_amp = torch.cuda.is_available() and config["training"].get("use_amp", True)
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     is_main = _is_main_process()
