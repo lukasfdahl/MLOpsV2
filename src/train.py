@@ -106,7 +106,8 @@ def _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main):
             elif param.dtype == torch.bfloat16:
                 images = images.to(torch.bfloat16)
 
-            with torch.autocast(device_type=device_type, enabled=use_amp and param.dtype != torch.float16):
+            ds_mixed = param.dtype in (torch.float16, torch.bfloat16)
+            with torch.autocast(device_type=device_type, enabled=use_amp and not ds_mixed):
                 pred_logits, pred_boxes = model(images)
                 loss, metrics = detection_loss_set(
                     pred_logits, pred_boxes, targets,
