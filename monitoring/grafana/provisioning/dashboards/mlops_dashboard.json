@@ -1,0 +1,56 @@
+{
+  "title": "MLOps Inference Monitoring",
+  "uid": "mlops-inference",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate (req/s)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [{
+        "expr": "rate(inference_requests_total[1m])",
+        "legendFormat": "{{status}}"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "Inference Latency (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, rate(inference_latency_seconds_bucket[1m]))", "legendFormat": "p50"},
+        {"expr": "histogram_quantile(0.95, rate(inference_latency_seconds_bucket[1m]))", "legendFormat": "p95"},
+        {"expr": "histogram_quantile(0.99, rate(inference_latency_seconds_bucket[1m]))", "legendFormat": "p99"}
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Prediction Confidence Distribution",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "targets": [{
+        "expr": "histogram_quantile(0.50, rate(prediction_confidence_bucket[1m]))",
+        "legendFormat": "median confidence"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "Model Loaded",
+      "type": "stat",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "targets": [{"expr": "model_loaded", "legendFormat": "loaded"}],
+      "options": {
+        "colorMode": "background",
+        "thresholds": {
+          "steps": [
+            {"color": "red", "value": 0},
+            {"color": "green", "value": 1}
+          ]
+        }
+      }
+    }
+  ]
+}

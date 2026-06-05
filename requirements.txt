@@ -23,3 +23,10 @@ carbontracker
 
 # ddp and zero
 deepspeed
+
+# module 6 - monitoring and drift
+evidently
+fastapi
+uvicorn[standard]
+prometheus-client
+python-multipart

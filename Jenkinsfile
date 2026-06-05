@@ -13,6 +13,8 @@ pipeline {
         booleanParam(name: 'RUN_TRAIN_AILAB',   defaultValue: true,  description: 'Run training on AI-LAB (full dataset)')
         booleanParam(name: 'RUN_POST_TRAINING', defaultValue: true,  description: 'Run post-training optimization on AI-LAB')
         booleanParam(name: 'RUN_DEPLOY',        defaultValue: true,  description: 'Evaluate and deploy model')
+        booleanParam(name: 'RUN_DRIFT',         defaultValue: true,  description: 'Run drift detection')
+        booleanParam(name: 'RUN_MONITORING',    defaultValue: true,  description: 'Start Prometheus + Grafana monitoring stack')
     }
 
     options {
@@ -149,6 +151,36 @@ pipeline {
                         done
                     '''
                 }
+            }
+        }
+
+        stage("Drift Detection") {
+            when { expression { return params.RUN_DRIFT } }
+            steps {
+                echo "Running data drift detection on sample dataset"
+                sh """
+                    docker run --rm \
+                        -v ${WORKSPACE}/data:/app/data \
+                        -v ${WORKSPACE}/runs:/app/runs \
+                        --workdir /app \
+                        ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
+                        python src/drift.py
+                """
+                echo "Drift report saved to runs/drift/drift_report.html"
+            }
+        }
+
+        stage("Start Monitoring Stack") {
+            when { expression { return params.RUN_MONITORING } }
+            steps {
+                echo "Starting Prometheus + Grafana monitoring stack"
+                sh """
+                    docker-compose -f docker-compose.monitoring.yml up -d
+                    echo "Monitoring stack started:"
+                    echo "  Grafana:    http://localhost:3000  (admin/admin)"
+                    echo "  Prometheus: http://localhost:9090"
+                    echo "  API:        http://localhost:8000/health"
+                """
             }
         }
 

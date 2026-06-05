@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+
+  inference-api:
+    image: kaspersiebrands/mlops-kls-container:latest
+    container_name: mlops-inference-api
+    command: uvicorn src.serve:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./runs:/app/runs          # model checkpoint
+      - ./config:/app/config      # config files
+      - ./src:/app/src            # source (for dev; remove in prod)
+    environment:
+      - MODEL_CHECKPOINT=runs/models/best_model.pth
+    working_dir: /app
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mlops-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    depends_on:
+      - inference-api
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mlops-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
