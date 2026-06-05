@@ -77,8 +77,8 @@ echo "=== Starting Training | multi_gpu=$NUM_GPUS | $(date) ==="
 if [ "$NUM_GPUS" -gt 1 ]; then
     # DDP multi-GPU training via torchrun
     echo "Launching DDP training on $NUM_GPUS GPUs with torchrun"
+    # --nv passes CUDA_VISIBLE_DEVICES automatically — don't override it explicitly
     singularity exec --nv --bind $PROJECT:/app \
-        --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
         $CONTAINER \
         bash -c "cd /app && TRAIN_CONFIG=config/final_train.config.yaml \
         torchrun --nproc_per_node=$NUM_GPUS \
