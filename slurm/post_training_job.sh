@@ -3,6 +3,7 @@
 #SBATCH --output=/ceph/project/MLOPS_KLS/runs/slurm_post_%j.log
 #SBATCH --time=4:00:00
 #SBATCH --gres=gpu:1
+#SBATCH --exclude=ailab-l4-04
 #SBATCH --mem=24G
 #SBATCH --cpus-per-task=15
 #SBATCH --begin=now

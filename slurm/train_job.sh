@@ -5,6 +5,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mem=24G
 #SBATCH --cpus-per-task=15
+#SBATCH --exclude=ailab-l4-04
 # NOTE: GPU/mem/CPU counts are overridden at submit time by slurm/submit_train.sh
 #       which reads multi_gpu from final_train.config.yaml.
 #SBATCH --begin=now
