@@ -186,16 +186,21 @@ pipeline {
         stage("Start Monitoring Stack") {
             when { expression { return params.RUN_MONITORING } }
             steps {
-                echo "Pulling latest model from DVC and starting monitoring stack"
+                echo "Pulling model from DVC and starting monitoring stack"
                 sh """
-                    # Pull the trained model so the inference API has a checkpoint
-                    dvc pull runs/models/best_model.pth || echo "DVC pull failed or model not yet versioned, continuing..."
+                    mkdir -p ${WORKSPACE}/runs/models
+                    # Run dvc pull inside Docker which already has DVC installed
+                    docker run --rm \
+                        -v ${WORKSPACE}:/app \
+                        --workdir /app \
+                        ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
+                        dvc pull runs/models/best_model.pth || echo "DVC pull failed, continuing..."
 
-                    docker-compose -f docker-compose.monitoring.yml up -d
+                    docker compose -f docker-compose.monitoring.yml up -d || docker-compose -f docker-compose.monitoring.yml up -d
                     echo "Monitoring stack started:"
-                    echo "  Grafana:    http://localhost:3000  (admin/admin)"
-                    echo "  Prometheus: http://localhost:9090"
-                    echo "  API:        http://localhost:8000/health"
+                    echo "  Grafana:    http://172.24.198.42:3000  (admin/admin)"
+                    echo "  Prometheus: http://172.24.198.42:9090"
+                    echo "  API:        http://172.24.198.42:8000/health"
                 """
             }
         }
