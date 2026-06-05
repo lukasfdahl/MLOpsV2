@@ -193,14 +193,26 @@ def train_model(rank=None, world_size=None):
                 },
                 "fp16": {"enabled": use_amp},
                 "zero_optimization": {"stage": ZERO_STAGE},
+                # Built-in warmup
+                # DeepSpeedZeroOptimizer. Steps-per-epoch is approximate (~100);
+                # good enough for warmup and avoids needing a steps_per_epoch calc.
+                "scheduler": {
+                    "type": "WarmupLR",
+                    "params": {
+                        "warmup_min_lr": LEARNING_RATE * 0.1,
+                        "warmup_max_lr": LEARNING_RATE,
+                        "warmup_num_steps": WARMUP_EPOCHS * 100,
+                    }
+                },
             }
             model, optimizer, _, _ = deepspeed.initialize(
                 model=model, config=ds_config
             )
-            warmup_scheduler = optim.lr_scheduler.LinearLR(
-                optimizer, start_factor=0.1, end_factor=1.0, total_iters=WARMUP_EPOCHS)
-            plateau_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode="min", factor=0.5, patience=3)
+            # DeepSpeed wraps the optimizer — PyTorch schedulers don't accept it.
+            # LR warmup is handled by DeepSpeed's built-in WarmupLR scheduler
+            # declared in ds_config above. Set to None so the epoch loop skips them.
+            warmup_scheduler = None
+            plateau_scheduler = None
             if is_main:
                 print(f"DeepSpeed ZeRO stage {ZERO_STAGE} enabled")
         except ImportError:
@@ -270,11 +282,13 @@ def train_model(rank=None, world_size=None):
         # Validation
         val_loss, val_acc = _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main)
 
-        # Warmup for first N epochs, then ReduceLROnPlateau takes over
-        if epoch <= WARMUP_EPOCHS:
-            warmup_scheduler.step()
-        else:
-            plateau_scheduler.step(val_loss)
+        # Warmup for first N epochs, then ReduceLROnPlateau takes over.
+        # When ZeRO > 0 both schedulers are None (DeepSpeed handles LR internally).
+        if warmup_scheduler is not None and plateau_scheduler is not None:
+            if epoch <= WARMUP_EPOCHS:
+                warmup_scheduler.step()
+            else:
+                plateau_scheduler.step(val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
 
         # log metrics to MLflow — only on rank 0
