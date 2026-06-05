@@ -86,8 +86,8 @@ def greedy_match(pred_boxes, tgt_boxes):
             torch.empty(0, dtype=torch.long, device=pred_boxes.device),
         )
 
-    # cost [K,N]
-    cost = torch.cdist(pred_boxes, tgt_boxes, p=1)
+    # cost [K,N] — cdist doesn't support BFloat16, cast to float32
+    cost = torch.cdist(pred_boxes.float(), tgt_boxes.float(), p=1)
 
     matched_p = []
     matched_t = []
