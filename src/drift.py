@@ -1,11 +1,3 @@
-# drift.py
-# Detects data drift using statistical tests (Kolmogorov-Smirnov per feature).
-# Uses clean val images as the reference distribution and an artificially
-# noise-corrupted version as the "current" (drifted) distribution.
-#
-# Run: python src/drift.py
-# Output: runs/drift/drift_report.html  — open in browser to view results
-
 import os
 import sys
 import numpy as np
@@ -15,23 +7,26 @@ from PIL import Image
 from scipy import stats
 import json
 
-# ── paths ────────────────────────────────────────────────────────────────────
+# paths
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR     = os.path.join(PROJECT_ROOT, "data", "coco128_small", "images", "train2017")
 OUT_DIR      = os.path.join(PROJECT_ROOT, "runs", "drift")
 os.makedirs(OUT_DIR, exist_ok=True)
 
+# Constants for feature extraction and drift detection
 FEATURE_NAMES = ["R_mean", "G_mean", "B_mean", "R_std", "G_std", "B_std"]
 RESIZE    = T.Resize((64, 64))
 TO_TENSOR = T.ToTensor()
+
+# drift threshold
 P_THRESHOLD = 0.05   # p-value below this → drift detected
 
-
+# For testing: simulate drift with Gaussian noise + brightness shift
 def image_to_features(img: Image.Image) -> list:
     t = TO_TENSOR(RESIZE(img))
     return t.mean(dim=(1, 2)).tolist() + t.std(dim=(1, 2)).tolist()
 
-
+# The main script runs a full drift detection pipeline:
 def load_images(data_dir: str) -> list:
     paths = sorted([
         os.path.join(data_dir, f)
@@ -42,7 +37,7 @@ def load_images(data_dir: str) -> list:
         raise FileNotFoundError(f"No images found in {data_dir}")
     return [Image.open(p).convert("RGB") for p in paths]
 
-
+# Simulate drift by adding Gaussian noise and a brightness shift to the images.
 def apply_drift(images: list, noise_std: float = 0.15) -> list:
     """Gaussian noise + brightness shift to simulate production drift."""
     drifted = []
@@ -52,7 +47,7 @@ def apply_drift(images: list, noise_std: float = 0.15) -> list:
         drifted.append(T.ToPILImage()(t))
     return drifted
 
-
+# Run KS test per feature and aggregate results
 def run_ks_drift(ref: np.ndarray, cur: np.ndarray) -> dict:
     """Run KS test per feature. Returns per-feature results + overall flag."""
     results = {}
@@ -71,7 +66,7 @@ def run_ks_drift(ref: np.ndarray, cur: np.ndarray) -> dict:
     }
     return results
 
-
+# Generate a simple HTML report with a table of results and a summary verdict.
 def save_html_report(results: dict, ref: np.ndarray, cur: np.ndarray, path: str):
     """Generate a simple self-contained HTML report."""
     rows = ""
@@ -118,7 +113,7 @@ deployment threshold the deploy stage will automatically reject the new version.
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
 
-
+#loooop
 def main():
     print("Loading images...")
     images = load_images(DATA_DIR)
