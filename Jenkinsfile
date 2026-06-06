@@ -284,11 +284,14 @@ pipeline {
             steps {
                 echo "Syncing MLflow DB from AI-LAB and evaluating model for deployment"
                 sshagent(['ailab-ssh-key']) {
-                    // Pull the MLflow DB from AI-LAB so deploy.py can read training results
+                    // Pull the MLflow DB from AI-LAB so deploy.py + the MLflow UI can read
+                    // training results. Uses scp (pure SSH) so it works even if rsync is
+                    // not available on the AI-LAB login node.
                     sh '''
-                        rsync -az -e "ssh -o StrictHostKeyChecking=no" \
+                        scp -o StrictHostKeyChecking=no \
                             ksiebr24@student.aau.dk@ailab-fe01.srv.aau.dk:/ceph/project/MLOPS_KLS/mlflow.db \
                             ${WORKSPACE}/mlflow.db
+                        echo "Pulled mlflow.db ($(du -h ${WORKSPACE}/mlflow.db | cut -f1))"
                     '''
                 }
                 sh """
