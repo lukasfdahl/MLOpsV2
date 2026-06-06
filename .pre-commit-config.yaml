@@ -9,8 +9,8 @@ repos:
         args: ['--maxkb=50000']      # Max file size is 50MB
     -   id: detect-private-key       # Teacher's requirement: catches hardcoded API keys/secrets
 
-#-   repo: https://github.com/PyCQA/flake8
-#    rev: 6.1.0
-#    hooks:
-#    -   id: flake8                   # Teacher's requirement: checks PEP8 coding standards
-#        args: ['--max-line-length=200', '--extend-ignore=E203'] # Gives you a bit more room than the default 80 chars & check for style / syntax errors
+-   repo: https://github.com/PyCQA/flake8
+    rev: 6.1.0
+    hooks:
+    -   id: flake8                   # Teacher's requirement: checks PEP8 coding standards
+        args: ['--max-line-length=200', '--extend-ignore=E203'] # Gives you a bit more room than the default 80 chars & check for style / syntax errors
