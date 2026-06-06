@@ -223,6 +223,11 @@ pipeline {
                 }
 
                 sh """
+                    # Ensure the MLflow DB + artifact dir exist as a file/dir so the bind
+                    # mounts don't get created as directories (deploy stage refreshes the DB).
+                    [ -f ${WORKSPACE}/mlflow.db ] || touch ${WORKSPACE}/mlflow.db
+                    mkdir -p ${WORKSPACE}/mlruns
+
                     docker compose -f docker-compose.monitoring.yml up -d || docker-compose -f docker-compose.monitoring.yml up -d
 
                     # Host + container exporters (best-effort — never fail the build).
@@ -255,6 +260,7 @@ pipeline {
                     echo "  Prometheus: http://\$HOST_IP:9090"
                     echo "  API:        http://\$HOST_IP:8000/health"
                     echo "  Predict UI: http://\$HOST_IP:8501  (Streamlit)"
+                    echo "  MLflow:     http://\$HOST_IP:5000"
                 """
             }
         }

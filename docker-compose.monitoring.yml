@@ -44,6 +44,20 @@ services:
     depends_on:
       - prometheus
 
+  # MLflow tracking UI (port 5000)
+  # stage rsyncs from AI-LAB. Shows runs, params, metrics and the model registry.
+  mlflow:
+    image: kaspersiebrands/mlops-kls-container:latest
+    container_name: mlops-mlflow
+    restart: unless-stopped
+    command: mlflow ui --backend-store-uri sqlite:////app/mlflow.db --host 0.0.0.0 --port 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./mlruns:/app/mlruns
+    working_dir: /app
+
   # Simple browser UI to upload images and view predictions (port 8501).
   inference-ui:
     image: kaspersiebrands/mlops-kls-container:latest
