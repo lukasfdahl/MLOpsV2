@@ -31,3 +31,7 @@ uvicorn[standard]
 prometheus-client
 python-multipart
 scipy
+
+# simple prediction UI
+streamlit
+requests

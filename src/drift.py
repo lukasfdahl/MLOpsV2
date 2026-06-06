@@ -54,15 +54,15 @@ def run_ks_drift(ref: np.ndarray, cur: np.ndarray) -> dict:
     n_drifted = 0
     for i, name in enumerate(FEATURE_NAMES):
         stat, p = stats.ks_2samp(ref[:, i], cur[:, i])
-        drifted = p < P_THRESHOLD
+        drifted = bool(p < P_THRESHOLD)
         if drifted:
             n_drifted += 1
-        results[name] = {"ks_stat": round(stat, 4), "p_value": round(p, 6), "drift": drifted}
+        results[name] = {"ks_stat": float(round(stat, 4)), "p_value": float(round(p, 6)), "drift": drifted}
     results["summary"] = {
-        "n_features": len(FEATURE_NAMES),
-        "n_drifted": n_drifted,
-        "dataset_drift": n_drifted > len(FEATURE_NAMES) / 2,
-        "p_threshold": P_THRESHOLD,
+        "n_features": int(len(FEATURE_NAMES)),
+        "n_drifted": int(n_drifted),
+        "dataset_drift": bool(n_drifted > len(FEATURE_NAMES) / 2),
+        "p_threshold": float(P_THRESHOLD),
     }
     return results
 
@@ -145,10 +145,11 @@ def main():
     save_html_report(results, ref_features, cur_features, report_path)
     print(f"\nReport saved to: {report_path}")
 
-    # Save JSON for programmatic use
+    # Save JSON for programmatic use (clean native types — consumed by the
+    # inference API's Prometheus collector to expose drift_* metrics).
     json_path = os.path.join(OUT_DIR, "drift_results.json")
     with open(json_path, "w") as f:
-        json.dump(results, f, indent=2, default=lambda x: bool(x) if hasattr(x, 'item') else str(x))
+        json.dump(results, f, indent=2)
 
     return 0 if s["dataset_drift"] else 1
 

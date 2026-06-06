@@ -8,11 +8,13 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./runs:/app/runs          # model checkpoint
+      - ./runs:/app/runs          # model checkpoint + drift report
       - ./config:/app/config      # config files
       - ./src:/app/src            # source (for dev; remove in prod)
+      - ./model_card.yaml:/app/model_card.yaml   # surfaced as model_card_* metrics
     environment:
       - MODEL_CHECKPOINT=runs/models/best_model.pth
+      - MODEL_CARD_PATH=model_card.yaml
     working_dir: /app
 
   prometheus:
@@ -41,3 +43,25 @@ services:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - prometheus
+
+  # Simple browser UI to upload images and view predictions (port 8501).
+  inference-ui:
+    image: kaspersiebrands/mlops-kls-container:latest
+    container_name: mlops-inference-ui
+    restart: unless-stopped
+    command: streamlit run src/ui.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./src:/app/src
+    environment:
+      - API_URL=http://inference-api:8000
+    working_dir: /app
+    depends_on:
+      - inference-api
+
+# All monitoring services share one named network so the system/GPU exporter
+# compose files (and the drift container) can resolve services by name.
+networks:
+  default:
+    name: mlops-monitoring

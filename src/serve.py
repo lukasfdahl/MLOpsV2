@@ -9,25 +9,27 @@ import os
 import sys
 import time
 import io
+import json
 import torch
 import torchvision.transforms as T
 from PIL import Image
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
-from prometheus_client import Counter, Histogram, Gauge, make_asgi_app
+from prometheus_client import Counter, Histogram, Gauge, make_asgi_app, REGISTRY
+from prometheus_client.core import GaugeMetricFamily, InfoMetricFamily
 from starlette.routing import Mount
 
-# ── add project src to path when running as module ───────────────────────────
+# add project src to path when running as module
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from model import CustomCNN
 from config import config
 
-# ── Prometheus metrics ────────────────────────────────────────────────────────
+# Prometheus metrics
 REQUEST_COUNT = Counter(
     "inference_requests_total",
     "Total number of inference requests",
-    ["status"],          # labels: success / error
+    ["status"],        
 )
 INFERENCE_LATENCY = Histogram(
     "inference_latency_seconds",
@@ -41,13 +43,77 @@ PREDICTION_CONFIDENCE = Histogram(
 )
 MODEL_LOADED = Gauge("model_loaded", "1 if model is loaded successfully, 0 otherwise")
 
-# ── model setup ───────────────────────────────────────────────────────────────
+# model setup
 NUM_CLASSES = 80
 CHECKPOINT  = os.environ.get(
     "MODEL_CHECKPOINT",
     os.path.join(config["path"]["run_base_dir"], "models", "best_model.pth"),
 )
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Drift + model-card metrics
+DRIFT_JSON      = os.path.join(config["path"]["run_base_dir"], "drift", "drift_results.json")
+MODEL_CARD_PATH = os.environ.get("MODEL_CARD_PATH", "model_card.yaml")
+
+
+class MlopsFileCollector:
+    """Expose drift-report and model-card data as Prometheus metrics."""
+
+    def collect(self):
+        # Data drift (runs/drift/drift_results.json, written by drift.py)
+        try:
+            with open(DRIFT_JSON) as f:
+                d = json.load(f)
+            ks   = GaugeMetricFamily("drift_feature_ks_stat", "KS statistic per feature (higher = more drift)", labels=["feature"])
+            pval = GaugeMetricFamily("drift_feature_p_value", "KS test p-value per feature", labels=["feature"])
+            fdet = GaugeMetricFamily("drift_feature_detected", "1 if this feature drifted, else 0", labels=["feature"])
+            for feat, vals in d.items():
+                if feat == "summary":
+                    continue
+                ks.add_metric([feat], float(vals["ks_stat"]))
+                pval.add_metric([feat], float(vals["p_value"]))
+                fdet.add_metric([feat], 1.0 if vals["drift"] else 0.0)
+            yield ks
+            yield pval
+            yield fdet
+            s = d.get("summary", {})
+            yield GaugeMetricFamily("drift_features_total",   "Total features tested for drift", value=float(s.get("n_features", 0)))
+            yield GaugeMetricFamily("drift_features_drifted", "Number of features that drifted",  value=float(s.get("n_drifted", 0)))
+            yield GaugeMetricFamily("drift_dataset_detected", "1 if overall dataset drift detected, else 0", value=1.0 if s.get("dataset_drift") else 0.0)
+        except Exception:
+            pass
+
+        # Model card (model_card.yaml, updated by deploy.py)
+        try:
+            import yaml
+            with open(MODEL_CARD_PATH) as f:
+                card = yaml.safe_load(f) or {}
+            md   = card.get("model_details", {}) or {}
+            perf = card.get("performance", {}) or {}
+            thr  = (card.get("evaluation", {}) or {}).get("deployment_threshold", {}) or {}
+            info = InfoMetricFamily("model_card", "Deployed model card summary")
+            info.add_metric([], {
+                "name":               str(md.get("name", "")),
+                "version":            str(md.get("version", "")),
+                "framework":          str(md.get("framework", "")),
+                "best_val_loss":      str(perf.get("best_val_loss")),
+                "best_val_acc":       str(perf.get("best_val_acc")),
+                "run_id":             str(perf.get("run_id")),
+                "trained_at":         str(perf.get("trained_at")),
+                "val_loss_threshold": str(thr.get("val_loss")),
+            })
+            yield info
+            for metric_name, raw in (("model_card_best_val_loss", perf.get("best_val_loss")),
+                                     ("model_card_best_val_acc",  perf.get("best_val_acc"))):
+                try:
+                    yield GaugeMetricFamily(metric_name, "From model card (deploy.py)", value=float(raw))
+                except (TypeError, ValueError):
+                    pass
+        except Exception:
+            pass
+
+
+REGISTRY.register(MlopsFileCollector())
 
 _model = None
 
@@ -66,13 +132,13 @@ def get_model() -> CustomCNN:
         print(f"Model loaded from {CHECKPOINT} (epoch {ckpt['epoch']})")
     return _model
 
-# ── image preprocessing ───────────────────────────────────────────────────────
+# image preprocessing
 PREPROCESS = T.Compose([
     T.Resize((64, 64)),
     T.ToTensor(),
 ])
 
-# ── FastAPI app ───────────────────────────────────────────────────────────────
+# FastAPI app
 app = FastAPI(title="CustomCNN Inference API")
 
 # Mount Prometheus /metrics endpoint

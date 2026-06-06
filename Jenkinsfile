@@ -112,7 +112,7 @@ pipeline {
                     return config.contains('ailab_training: True')
                 }
             }
-            steps { // Fixed: removed extra closing brace
+            steps { 
                 echo "Submitting training SLURM job"
                 sshagent(['ailab-ssh-key']) {
                     sh '''
@@ -188,9 +188,7 @@ pipeline {
             steps {
                 echo "Refreshing model pointer, pulling model from DVC, and starting monitoring stack"
 
-                // Refresh the committed DVC pointer so we serve the EXACT model trained + pushed
-                // on AI-LAB during this build, not a stale workspace pointer. Non-fatal: if the
-                // refresh can't run we fall back to the checked-out pointer.
+                // Refresh the DVC pointer file for the best model to ensure it points to the latest trained model.
                 withCredentials([usernamePassword(credentialsId: 'github-kls-bot',
                                                   usernameVariable: 'GIT_USER',
                                                   passwordVariable: 'GIT_TOKEN')]) {
@@ -227,7 +225,15 @@ pipeline {
                 sh """
                     docker compose -f docker-compose.monitoring.yml up -d || docker-compose -f docker-compose.monitoring.yml up -d
 
-                    # Detect the worker's real IP — the build can land on any GPU worker,
+                    # Host + container exporters (best-effort — never fail the build).
+                    docker compose -f docker-compose.system.yml up -d || echo "System exporters not started — continuing"
+                    # GPU exporter
+                    docker compose -f docker-compose.gpu.yml up -d || echo "GPU exporter not started (no NVIDIA docker runtime?) — continuing"
+
+                    # Reload Prometheus config so new scrape targets are picked up
+                    docker kill --signal=HUP mlops-prometheus 2>/dev/null || true
+
+                    # Detect the worker's real IP
                     # so a hardcoded address is wrong as soon as it runs elsewhere.
                     HOST_IP=\$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \\K\\S+' || hostname -I | awk '{print \$1}')
 
@@ -248,6 +254,7 @@ pipeline {
                     echo "  Grafana:    http://\$HOST_IP:3000  (admin/admin)"
                     echo "  Prometheus: http://\$HOST_IP:9090"
                     echo "  API:        http://\$HOST_IP:8000/health"
+                    echo "  Predict UI: http://\$HOST_IP:8501  (Streamlit)"
                 """
             }
         }
