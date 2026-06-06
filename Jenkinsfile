@@ -331,7 +331,10 @@ pipeline {
                         ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
                         python src/deploy.py
 
-                    docker restart mlops-mlflow 2>/dev/null || true
+                    # Force-recreate the MLflow UI so it re-binds the freshly pulled DB —
+                    # a plain restart does not always re-resolve a single-file bind mount.
+                    docker compose -f docker-compose.monitoring.yml up -d --force-recreate mlflow 2>/dev/null \
+                        || docker restart mlops-mlflow 2>/dev/null || true
                 """
             }
         }
