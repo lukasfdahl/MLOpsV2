@@ -1,5 +1,5 @@
 outs:
-- md5: 7e3eccc063bca0af5840d59e1e88c635
+- md5: 5b1a91d66f399b0ca27912f3c221ffa7
   size: 305607107
   hash: md5
   path: optimized_weights.pth
