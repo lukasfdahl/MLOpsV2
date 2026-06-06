@@ -22,9 +22,9 @@ ewc_importance, anchor_weights = ewc_calculate_importance(model, val_loader_all)
 penatly_func = ewc_create_panalty(anchor_weights, ewc_importance, ewc_lamda=1000)
 
 train_loader_7 = get_confused_dataloader(train_loader_7, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [7])
-unlearn_7_train_loader = concat_dataloaders(train_loader_7, train_loader, 5000)
+unlearn_7_train_loader = concat_dataloaders(train_loader_7, train_loader, 200)
 
-model = train_model(model, train_loader_7, val_loader_all, epochs=1, penalty_func=penatly_func, save_path="runs/task2-2&3")
+model = train_model(model, unlearn_7_train_loader, val_loader_all, epochs=1, penalty_func=penatly_func, save_path="runs/task2-2&3")
 
 accuracy, average_loss = evaluate_model(model, val_loader_all)
 print("===================================")

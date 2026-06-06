@@ -42,6 +42,6 @@ def get_confused_dataloader(dataloader : DataLoader, all_classes : list[int], ta
         def __getitem__(self, idx):
             image, _ = original_dataset[idx]
             fake_label = random.choice(all_classes)
-            return image, torch.tensor(fake_label, dtype=torch.long)
+            return image, fake_label
 
     return DataLoader(ConfusedDatasetWrapper(), batch_size=dataloader.batch_size, shuffle=True)
