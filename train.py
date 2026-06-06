@@ -11,7 +11,7 @@ from device import DEVICE
 from typing import Callable
 
 
-def train_model(model : MnistMLP, train_dataloader : DataLoader, val_dataloader : DataLoader, epochs : int = 3, initial_learning_rate : float = 0.001, save_path : str = "runs/test", penalty_func : None | Callable[[nn.Module], torch.Tensor] = None) -> MnistMLP:
+def train_model(model : MnistMLP, train_dataloader : DataLoader, val_dataloader : DataLoader, epochs : int = 3, initial_learning_rate : float = 0.001, save_path : str = "runs/test", penalty_func : None | Callable[[nn.Module], torch.Tensor] = None, unlearn : bool = False) -> MnistMLP:
     os.makedirs(save_path, exist_ok=True)
 
     loss_func = nn.CrossEntropyLoss()
@@ -26,12 +26,15 @@ def train_model(model : MnistMLP, train_dataloader : DataLoader, val_dataloader 
         for images, labels in train_dataloader:
             images, labels = images.to(DEVICE), labels.to(DEVICE) # transfer data to the correct device
             x = model(images)
+            loss = loss_func(x, labels)
+
+            # if unlearning then accend the gradient instead of decent (keep ewc to ensure it keeps things relevant to other classes)
+            if unlearn: # (BEWARE: VERY VIOLENT, dont run for long, and use tiny leraning rate to not kill model)
+                loss *= -1
 
             # if we have a penatly function (like ewc) then add it to loss
             if penalty_func is not None:
-                loss = loss_func(x, labels) + penalty_func(model)
-            else:
-                loss = loss_func(x, labels)
+                loss += penalty_func(model)
 
             optimizer.zero_grad() # reset gradients
             loss.backward()

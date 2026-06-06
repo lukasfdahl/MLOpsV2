@@ -1,4 +1,4 @@
-from torch.utils.data import DataLoader, Subset, ConcatDataset
+from torch.utils.data import DataLoader, Subset, ConcatDataset, Dataset
 from torchvision import datasets, transforms
 import torch
 from typing import cast
@@ -28,3 +28,20 @@ def concat_dataloaders(main_dataloader : DataLoader, side_dataloader : DataLoade
     mixed_dataset = ConcatDataset([main_dataset, side_subset])
 
     return DataLoader(dataset=mixed_dataset, batch_size=batch_size, shuffle=shuffle)
+
+# a dataloader that can't learn a target class (it's labels is randomized to other values, to make the model strip it out)
+def get_confused_dataloader(dataloader : DataLoader, all_classes : list[int], target_classes : list[int]) -> DataLoader:
+    original_dataset = dataloader.dataset
+    original_subset = cast (Subset, original_dataset)
+    allowed_classes = (i for i in all_classes if i not in target_classes)
+
+    class ConfusedDatasetWrapper(Dataset):
+        def __len__(self):
+            return len(original_subset)
+
+        def __getitem__(self, idx):
+            image, _ = original_dataset[idx]
+            fake_label = random.choice(all_classes)
+            return image, torch.tensor(fake_label, dtype=torch.long)
+
+    return DataLoader(ConfusedDatasetWrapper(), batch_size=dataloader.batch_size, shuffle=True)
