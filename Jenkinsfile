@@ -43,9 +43,23 @@ pipeline {
         stage("Run Unit Tests") {
             when { expression { return params.RUN_TESTS } }
             steps {
-                echo "Running Pytest inside container"
-                // To mount the data folder and run the unit tests (${WORKSPACE} is the folder for the current build run)
-                sh "docker run --rm -v '${WORKSPACE}/data:/app/data' mlops-kls-container:${env.GIT_COMMIT}"
+                echo "Running Pytest with coverage inside container"
+                // Mount the data folder (tests need it) and a coverage_out dir so the
+                // HTML/XML reports land back in the workspace for archiving.
+                sh """
+                    mkdir -p ${WORKSPACE}/coverage_out
+                    docker run --rm \
+                        -v '${WORKSPACE}/data:/app/data' \
+                        -v '${WORKSPACE}/coverage_out:/app/coverage_out' \
+                        mlops-kls-container:${env.GIT_COMMIT} \
+                        sh -c 'pytest tests/ --cov=src --cov-branch --cov-report=term-missing --cov-report=xml:coverage_out/coverage.xml --cov-report=html:coverage_out/htmlcov'
+                """
+            }
+            post {
+                always {
+                    // Coverage reports are downloadable from the build page.
+                    archiveArtifacts artifacts: 'coverage_out/**', allowEmptyArchive: true
+                }
             }
         }
 
@@ -287,6 +301,8 @@ pipeline {
                         --workdir /app \
                         ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
                         python src/deploy.py
+
+                    docker restart mlops-mlflow 2>/dev/null || true
                 """
             }
         }
