@@ -335,6 +335,15 @@ pipeline {
                     # a plain restart does not always re-resolve a single-file bind mount.
                     docker compose -f docker-compose.monitoring.yml up -d --force-recreate mlflow 2>/dev/null \
                         || docker restart mlops-mlflow 2>/dev/null || true
+
+                    # Print MLflow UI diagnostics into the build log (no worker shell needed).
+                    sleep 5
+                    echo "=== MLflow UI diagnostics ==="
+                    docker ps --filter name=mlops-mlflow --format 'container: {{.Status}}' || true
+                    docker exec mlops-mlflow mlflow --version || true
+                    curl -s -o /dev/null -w "MLflow HTTP %{http_code}\\n" http://localhost:5000/ || true
+                    docker logs --tail 25 mlops-mlflow 2>&1 | sed 's/^/[mlflow] /' || true
+                    echo "=== end MLflow diagnostics ==="
                 """
             }
         }

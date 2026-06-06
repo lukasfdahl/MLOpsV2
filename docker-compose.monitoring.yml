@@ -50,7 +50,12 @@ services:
     image: kaspersiebrands/mlops-kls-container:latest
     container_name: mlops-mlflow
     restart: unless-stopped
-    command: mlflow ui --backend-store-uri sqlite:////app/mlflow.db --host 0.0.0.0 --port 5000
+    # Serve from a writable COPY of the DB inside the container: the single-file
+    # bind mount is often read-only to the server (causing 403s), and copying also
+    # sidesteps SQLite WAL/inode issues. Schema is upgraded first to tolerate a DB
+    # written by a newer MLflow. The container is force-recreated each deploy, so
+    # the copy is refreshed every run.
+    command: ["sh", "-c", "cp -f /app/mlflow.db /tmp/mlflow.db 2>/dev/null || true; mlflow db upgrade sqlite:////tmp/mlflow.db 2>/dev/null || true; mlflow server --backend-store-uri sqlite:////tmp/mlflow.db --host 0.0.0.0 --port 5000"]
     ports:
       - "5000:5000"
     volumes:
