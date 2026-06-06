@@ -1,5 +1,6 @@
 # train.py
 import os
+import time
 import torch
 import torch.optim as optim
 import torch.distributed as dist
@@ -310,6 +311,11 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
     epoch_bar = tqdm(range(1, EPOCHS + 1), desc="Training", disable=not is_main)
     for epoch in epoch_bar:
 
+        # Per-epoch timing + reset VRAM peak so we can report each epoch's max usage.
+        _t_epoch = time.perf_counter()
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats(device)
+
         # start tracking carbon for this epoch
         if carbon_available:
             tracker.epoch_start()
@@ -324,6 +330,14 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
 
         # Validation
         val_loss, val_acc = _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main)
+
+        # --- Per-epoch benchmark line for the AMP / ZeRO / multi-GPU experiments.
+        # Printed on every rank, so VRAM is reported per GPU. Grep the SLURM log for [BENCH].
+        _epoch_time = time.perf_counter() - _t_epoch
+        _peak_vram_mb = (torch.cuda.max_memory_allocated(device) / 1024**2) if torch.cuda.is_available() else 0.0
+        print(f"[BENCH] epoch={epoch} rank={rank if rank is not None else 0} "
+              f"gpus={world_size} amp={use_amp} zero={ZERO_STAGE} "
+              f"time={_epoch_time:.1f}s peak_vram={_peak_vram_mb:.0f}MB", flush=True)
 
         # Warmup for first N epochs, then ReduceLROnPlateau takes over.
         # When ZeRO > 0 both schedulers are None (DeepSpeed handles LR internally).
