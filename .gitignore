@@ -1,5 +1,6 @@
 # Random Other files
 runs/*
+data/*
 
 # ML Flow
 mlflow.db

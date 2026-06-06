@@ -2,7 +2,7 @@ from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 import torch
 
-def get_mnist_loader(allowed_digits: list, train : bool = True, shuffle : bool = True, batch_size : int = 64) -> DataLoader:
+def get_mnist_loader(allowed_digits: list[int], train : bool = True, shuffle : bool = True, batch_size : int = 64) -> DataLoader:
     # transform just specifies some actions to run on the data before it is made avilable in the code, here it is to turn the image files into tensorts and normalize the pixel values to have a center of 0 to make the model train faster
     transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
     train_dataset = datasets.MNIST(root='./data', train=train, download=True, transform=transform)
