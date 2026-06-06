@@ -200,6 +200,16 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
     # Build model and move to device
     model = CustomCNN(num_classes=num_classes).to(device)
 
+    # Optional fine-tune init: if FINETUNE_CHECKPOINT is set (e.g. by the
+    # post-training pruning step), start from those weights instead of from
+    # scratch. Normal training leaves this unset and is unaffected.
+    _init_ckpt = os.environ.get("FINETUNE_CHECKPOINT")
+    if _init_ckpt and os.path.isfile(_init_ckpt):
+        _sd = torch.load(_init_ckpt, map_location=device)
+        model.load_state_dict(_sd["model_state"] if "model_state" in _sd else _sd)
+        if is_main:
+            print(f"Fine-tuning: loaded initial weights from {_init_ckpt}")
+
     # Print model summary only on rank 0
     if is_main:
         summary_device = "cuda" if str(device).startswith("cuda") else "cpu"

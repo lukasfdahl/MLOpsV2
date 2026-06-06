@@ -67,9 +67,9 @@ def main():
          "val_loss": 999.0, "val_acc": 0.0},
         pruned_path,
     )
-    # Copy to best_model.pth so train_model() starts from the pruned base
-    import shutil
-    shutil.copy2(pruned_path, CHECKPOINT)
+    # Tell train_model() to start from the pruned weights (instead of from
+    # scratch), so fine-tuning actually recovers the pruned model's accuracy.
+    os.environ["FINETUNE_CHECKPOINT"] = pruned_path
     print(f"Pruned model saved as {pruned_path}, starting fine-tune...")
     train.train_model()
 
