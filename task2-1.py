@@ -8,12 +8,14 @@ from device import DEVICE
 
 model = MnistMLP()
 model = model.to(DEVICE)
-train_loader = get_mnist_loader([0, 1, 2, 3, 4])
-val_loader = get_mnist_loader([0, 1, 2, 3, 4], train=False)
+train_loader = get_mnist_loader([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+val_loader_all = get_mnist_loader([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], train=False)
 
-model = train_model(model, train_loader, val_loader, epochs=5, save_path="runs/task1-1")
+val_loaders : list[]
 
-accuracy, average_loss = evaluate_model(model, val_loader)
+model = train_model(model, train_loader, val_loader_all, epochs=5, save_path="runs/task2-1")
+
+accuracy, average_loss = evaluate_model(model, val_loader_all)
 print("===================================")
 print(f"Final Accuracy: acc {accuracy} | loss {average_loss}")
 print("===================================")

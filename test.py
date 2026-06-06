@@ -4,6 +4,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import DataLoader
 from model import MnistMLP
+from device import DEVICE
 
 
 def evaluate_model(model : MnistMLP, dataloader : DataLoader) -> tuple[float, float]:
@@ -16,6 +17,7 @@ def evaluate_model(model : MnistMLP, dataloader : DataLoader) -> tuple[float, fl
 
     with torch.no_grad():
         for images, labels in dataloader:
+            images, labels = images.to(DEVICE), labels.to(DEVICE) # transfer data to the correct device
             x = model(images)
             guesses = torch.argmax(x, dim=1) # pick out the most likely option for each tensor in the batch
             total += labels.size(0) # add the number of images in the batch to the total count
