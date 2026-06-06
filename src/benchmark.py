@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 """Batch-size benchmark for CustomCNN: latency + throughput per batch size.
-
-Run (GPU container):
-    docker run --rm --gpus all -v "$PWD:/app" --workdir /app \
-        kaspersiebrands/mlops-kls-container:latest python src/benchmark.py
 """
 import os
 import sys
@@ -14,9 +10,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from model import CustomCNN
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZES = [1, 2, 4, 8, 16, 32, 64, 128, 256]
 IMG = 64
-ITERS = 30
+# ResNet-101 is slow on CPU, so use smaller batches / fewer iters without a GPU.
+if DEVICE == "cuda":
+    BATCH_SIZES = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+    ITERS = 30
+else:
+    BATCH_SIZES = [1, 2, 4, 8, 16, 32]
+    ITERS = 10
 
 
 def main():

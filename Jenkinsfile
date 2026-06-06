@@ -15,6 +15,7 @@ pipeline {
         booleanParam(name: 'RUN_DEPLOY',        defaultValue: true,  description: 'Evaluate and deploy model')
         booleanParam(name: 'RUN_DRIFT',         defaultValue: true,  description: 'Run drift detection')
         booleanParam(name: 'RUN_MONITORING',    defaultValue: true,  description: 'Start Prometheus + Grafana monitoring stack')
+        booleanParam(name: 'RUN_BENCHMARK',     defaultValue: true,  description: 'Run batch + compression inference benchmarks (CPU)')
     }
 
     options {
@@ -275,6 +276,31 @@ pipeline {
                     echo "  API:        http://\$HOST_IP:8000/health"
                     echo "  Predict UI: http://\$HOST_IP:8501  (Streamlit)"
                     echo "  MLflow:     http://\$HOST_IP:5000"
+                """
+            }
+        }
+
+        stage("Inference & Batch Benchmark") {
+            when { expression { return params.RUN_BENCHMARK } }
+            steps {
+                echo "Batch-inference speed test + fp32-vs-int8 compression benchmark (CPU)"
+                // Batch throughput/latency sweep — needs only the model architecture; runs on CPU.
+                sh """
+                    docker run --rm --workdir /app \
+                        ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
+                        python src/benchmark.py
+                """
+                // fp32 vs int8 compression on the committed coco128_small sample. Needs
+                // best_model.pth, which the monitoring stage pulled into runs/models/.
+                // Best-effort: skip cleanly if the model isn't present.
+                sh """
+                    docker run --rm \
+                        -v ${WORKSPACE}/runs:/app/runs \
+                        -v ${WORKSPACE}/data:/app/data \
+                        -e TRAIN_CONFIG=config/small_train.config.yaml \
+                        --workdir /app \
+                        ${env.DOCKER_REGISTRY}/mlops-kls-container:latest \
+                        python src/inference.py || echo "Compression benchmark skipped (best_model.pth not found — enable RUN_MONITORING to pull it)"
                 """
             }
         }
