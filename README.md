@@ -181,10 +181,6 @@ All training runs, metrics, models and deployments are tracked in MLflow.
 - Per-batch throughput and latency printed to console
 - Results logged to MLflow under `custom_model_inference` experiment
 
-## License
-
-MIT
-
 ## Acknowledgments
 
 - MS COCO dataset for training data
