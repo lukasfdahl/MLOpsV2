@@ -33,7 +33,7 @@ The monitoring stack runs on the AI-LAB GPU worker. The pipeline prints the curr
 
 ## The model
 
-`CustomCNN` is a DETR-style detector: an ImageNet-pretrained **ResNet-101 backbone** for feature extraction, an adaptive pool to a fixed 8×8 grid, a fully-connected trunk, and a set of learned **query embeddings** feeding two heads — a classification head (80 COCO classes + background) and a bounding-box regression head. Inputs are resized to 64×64.
+`CustomCNN` is a DETR-style detector: an ImageNet-pretrained **ResNet-101 backbone** for feature extraction, a global average pool (1×1) to a 2048-dim vector, a fully-connected trunk, and a set of learned **query embeddings** feeding two heads — a classification head (80 COCO classes + background) and a bounding-box regression head. Inputs are resized to 64×64.
 
 ---
 
@@ -42,10 +42,10 @@ The monitoring stack runs on the AI-LAB GPU worker. The pipeline prints the curr
 ### Model details
 - **Name:** CustomCNN
 - **Type:** Object detection (classification + bounding-box regression)
-- **Architecture:** ResNet-101 backbone (ImageNet-pretrained) → adaptive pool (8×8) → FC trunk (2048·8·8 → 1024 → 512 → 256) → 50 query embeddings → classification head (256 → 81) + bbox head (256 → 64 → 4, normalised cx,cy,w,h)
+- **Architecture:** ResNet-101 backbone (ImageNet-pretrained) → global avg pool (1×1) → FC trunk (2048 → 1024 → 512 → 256) → 50 query embeddings → classification head (256 → 81) + bbox head (256 → 64 → 4, normalised cx,cy,w,h)
 - **Framework:** PyTorch
 - **Input size:** 64×64
-- **Checkpoint size:** ≈ 677 MB
+- **Checkpoint size:** ≈ 43 MB
 - **Versioning:** weights versioned with DVC; every run + version tracked in MLflow
 
 ### Intended use
