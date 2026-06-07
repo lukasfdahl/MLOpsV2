@@ -17,13 +17,13 @@ class CustomCNN(nn.Module):
         # Remove the final avgpool and fc layers — we only want the feature maps
         self.features = nn.Sequential(*list(backbone.children())[:-2])
 
-        # Adaptive pool to get fixed 8x8 spatial size regardless of input resolution
-        self.adaptive_pool = nn.AdaptiveAvgPool2d((8, 8))
+        # Adaptive pool to collapse spatial dims to 1x1 — gives a 2048-dim vector
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((1, 1))
 
         # Shared FC trunk — 2048 channels from ResNet-101 layer4
         self.trunk = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(2048 * 8 * 8, 1024),
+            nn.Linear(2048, 1024),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(1024, 512),
@@ -57,7 +57,7 @@ class CustomCNN(nn.Module):
 
         # Extract features with ResNet-101 backbone
         feat_map = self.features(x)              # (B, 2048, H', W')
-        feat_map = self.adaptive_pool(feat_map)  # (B, 2048, 8, 8)
+        feat_map = self.adaptive_pool(feat_map)  # (B, 2048, 1, 1)
         feat = self.trunk(feat_map)              # (B, 256)
 
         # Broadcast feature vector across all query slots
