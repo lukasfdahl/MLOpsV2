@@ -1,3 +1,5 @@
+**IMPORTANT, look at development branch for up to date model code, and module7 branch for module7 code**
+
 # CustomCNN Object Detection Project
 A custom implementation of a CNN-based object detection model, featuring automated training, testing, and inference pipelines using an MLOps pipeline.
 
