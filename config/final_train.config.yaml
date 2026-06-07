@@ -15,12 +15,12 @@ dataloader:
   persistent_workers: True # Keep workers alive between epochs
 
 training:
-  epochs: 1
+  epochs: 50
   batch_size: 1536
   learning_rate: 0.00225
   weight_decay: 0.0005
   multi_gpu: 2         # Number of GPUs to use (1 = single GPU, 2+ = DDP)
-  zero_stage: 3         # DeepSpeed ZeRO stage (0 = off, 1/2/3 = increasing VRAM savings)
-  use_amp: False         # Automatic Mixed Precision (toggle for benchmarking)
+  zero_stage: 0         # DeepSpeed ZeRO stage (0 = off, 1/2/3 = increasing VRAM savings)
+  use_amp: True         # Automatic Mixed Precision (toggle for benchmarking)
   early_stopping_patience: 15
   warmup_epochs: 5
