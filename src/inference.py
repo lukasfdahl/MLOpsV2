@@ -1,139 +1,241 @@
+# (Recommended, but not mandatory: Consider writing your inference script in another language than Python e.g. C++)
+# inference.py
 import os
+import sys
 import time
-import copy
 import torch
 import torch.nn as nn
+import mlflow
+from PIL import Image
+from torchvision import transforms
 
 from config import config
-from model import CustomCNN
-from dataloader import get_dataloaders
-from utility.training import detection_loss_set
-from carbontracker.tracker import CarbonTracker
-
-# Config 
-CHECKPOINT  = os.path.join(config["path"]["run_base_dir"], "models", "best_model.pth")
-NUM_CLASSES = 80
-BATCH_SIZE  = 16
-CONF_THRESH = 0.5
 
 
-# Helpers
-def load_model(device):
-    if not os.path.isfile(CHECKPOINT):
-        raise FileNotFoundError(
-            f"No checkpoint at '{CHECKPOINT}' — train the model first.")
-    ckpt = torch.load(CHECKPOINT, map_location=device, weights_only=False)
-    model = CustomCNN(num_classes=NUM_CLASSES).to(device)
-    model.load_state_dict(ckpt["model_state"])
+# ── Model definition (copied from train.py to avoid importing train.py side-effects) ──
+
+class CustomCNN(nn.Module):
+    """
+    Simple CNN with two prediction heads:
+      - cls_head  : classifies the dominant object (num_classes logits)
+      - bbox_head : regresses the bounding box [cx, cy, w, h] normalised to [0,1]
+    """
+
+    def __init__(self, num_classes: int, num_queries: int = 50):
+        super().__init__()
+        self.num_classes = num_classes
+        self.num_queries = num_queries
+
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 16, 3, padding=1),
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(16, 32, 3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+        )
+
+        self.trunk = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(64 * 8 * 8, 256),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+        )
+
+        self.query_embed = nn.Embedding(num_queries, 256)
+        self.cls_head = nn.Linear(256, num_classes + 1)
+        self.bbox_head = nn.Sequential(
+            nn.Linear(256, 64),
+            nn.ReLU(),
+            nn.Linear(64, 4),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        b = x.size(0)
+        feat = self.trunk(self.features(x))
+        q = self.query_embed.weight.unsqueeze(0).expand(b, -1, -1)
+        h = feat.unsqueeze(1) + q
+        return self.cls_head(h), self.bbox_head(h)
+
+
+# ── Preprocessing ──
+
+TRANSFORM = transforms.Compose([
+    transforms.Resize((64, 64)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225]),
+])
+
+
+# ── Helpers ──
+
+def get_device():
+    """Pick the best available device — works on Mac (MPS), Linux (CUDA) and CPU."""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
+def load_model(num_classes=80):
+    """Load best_model.pth from the path defined in config."""
+    checkpoint_path = os.path.join(
+        config["path"]["run_base_dir"], "models", "best_model.pth"
+    )
+    if not os.path.isfile(checkpoint_path):
+        print(f"ERROR: No checkpoint found at '{checkpoint_path}'")
+        print("Train the model first: python src/train.py")
+        sys.exit(1)
+
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    model = CustomCNN(num_classes=num_classes)
+    model.load_state_dict(checkpoint["model_state"])
     model.eval()
-    print(f"Loaded checkpoint: epoch {ckpt['epoch']}, val_loss={ckpt['val_loss']:.4f}")
+    print(f"Loaded model — epoch {checkpoint['epoch']}, val_loss={checkpoint['val_loss']:.4f}")
     return model
 
 
-def run_inference(model, val_loader, device, label):
-    """Run one full pass over val_loader, print per-batch and summary stats."""
-    print(f"\n{'='*55}")
-    print(f"  {label}  (device={device})")
-    print(f"{'='*55}")
-
-    total_correct = total_samples = 0
-    batch_times = []
-
-    with torch.no_grad():
-        for batch_idx, (images, targets) in enumerate(val_loader):
-            images = images.to(device)
-
-            t0 = time.perf_counter()
-            pred_logits, pred_boxes = model(images)
-            elapsed_ms = (time.perf_counter() - t0) * 1000
-
-            _, metrics = detection_loss_set(
-                pred_logits, pred_boxes, targets,
-                num_classes=NUM_CLASSES
-            )
-
-            bs = images.size(0)
-            total_correct  += metrics["acc"] * bs
-            total_samples  += bs
-            batch_times.append(elapsed_ms)
-
-            throughput = bs / (elapsed_ms / 1000)
-            print(f"  Batch {batch_idx+1:>3} | {bs:>3} imgs | "
-                  f"{elapsed_ms:>7.1f} ms | {throughput:>6.1f} img/s | "
-                  f"acc={metrics['acc']*100:.1f}%")
-
-    avg_ms      = sum(batch_times) / len(batch_times)
-    avg_img_ms  = avg_ms / BATCH_SIZE
-    total_acc   = 100.0 * total_correct / total_samples
-
-    print(f"\n  Summary [{label}]")
-    print(f"    Accuracy          : {total_acc:.2f}%")
-    print(f"    Avg batch latency : {avg_ms:.1f} ms")
-    print(f"    Avg per-image     : {avg_img_ms:.2f} ms")
-    print(f"    Throughput        : {1000/avg_img_ms:.1f} img/s")
-
-    return total_acc, avg_ms, avg_img_ms
-
-
-def start_inference():
-    dataset_path = (
-        config["path"]["sample_dataset_path"]
-        if config["settings"]["use_sample_dataset"]
-        else config["path"]["full_dataset_path"]
-    )
-
-    _, val_loader, _ = get_dataloaders(
-        data_dir=dataset_path,
-        batch_size=BATCH_SIZE,
-    )
-
-    # Carbon tracking for inference — treat the full inference pass as one epoch
-    carbon_log = os.path.join(config["path"]["run_base_dir"], "carbontracker_inference")
-    os.makedirs(carbon_log, exist_ok=True)
-    use_carbon = torch.cuda.is_available()
-    if use_carbon:
-        tracker = CarbonTracker(epochs=1, log_dir=carbon_log, components="gpu")
-        tracker.epoch_start()
-        print("CarbonTracker: tracking inference carbon footprint")
+def get_image_paths():
+    """Collect image paths from the dataset directory defined in config."""
+    if config["settings"]["use_sample_dataset"]:
+        dataset_path = config["path"]["sample_dataset_path"]
     else:
-        print("CarbonTracker: no GPU detected, skipping carbon tracking for inference")
+        dataset_path = config["path"]["full_dataset_path"]
 
-    # Original model (fp32, CUDA if available)
-    cuda = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_fp32 = load_model(cuda)
-    acc_fp32, batch_ms_fp32, img_ms_fp32 = run_inference(
-        model_fp32, val_loader, cuda, "Original fp32")
+    images_dir = os.path.join(dataset_path, "images", "train")
 
-    # Quantized model (int8, CPU only)
-    # deepcopy so fp32 model stays intact for the comparison above
-    cpu = torch.device("cpu")
-    model_int8 = torch.ao.quantization.quantize_dynamic(
-        copy.deepcopy(model_fp32).cpu(), {nn.Linear}, dtype=torch.qint8
+    if not os.path.isdir(images_dir):
+        print(f"ERROR: Image directory not found: '{images_dir}'")
+        print("Check your config paths and run from the project root directory.")
+        sys.exit(1)
+
+    paths = [
+        os.path.join(images_dir, f)
+        for f in sorted(os.listdir(images_dir))
+        if f.lower().endswith((".jpg", ".jpeg", ".png"))
+    ]
+
+    if not paths:
+        print(f"ERROR: No images found in '{images_dir}'")
+        sys.exit(1)
+
+    return paths
+
+
+def preprocess_images(image_paths):
+    """Load and preprocess a list of image paths into a batch tensor."""
+    tensors = []
+    for p in image_paths:
+        try:
+            tensors.append(TRANSFORM(Image.open(p).convert("RGB")))
+        except Exception as e:
+            print(f"  Warning: skipping '{p}' — {e}")
+    if not tensors:
+        print("ERROR: No images could be loaded in this batch.")
+        sys.exit(1)
+    return torch.stack(tensors)
+
+
+def postprocess(pred_logits, pred_boxes, conf_threshold=0.5):
+    """Convert raw model output to a list of detections per image."""
+    probs = torch.softmax(pred_logits, dim=-1)
+    results = []
+    for b in range(probs.size(0)):
+        detections = []
+        for q in range(probs.size(1)):
+            class_id = probs[b, q].argmax().item()
+            confidence = probs[b, q, class_id].item()
+            if class_id == 0 or confidence < conf_threshold:
+                continue
+            detections.append({
+                "class_id": class_id,
+                "confidence": round(confidence, 3),
+                "box": [round(v, 3) for v in pred_boxes[b, q].tolist()],
+            })
+        results.append(sorted(detections, key=lambda d: d["confidence"], reverse=True))
+    return results
+
+
+# ── Main ──
+
+def run_batch_inference(image_paths, batch_size=8, conf_threshold=0.5):
+    """
+    Run batch inference and log throughput + results to MLflow.
+
+    Args:
+        image_paths:    List of image file paths.
+        batch_size:     Images per forward pass.
+        conf_threshold: Minimum confidence to keep a detection.
+    """
+    device = get_device()
+    print(f"Device: {device}")
+
+    model = load_model()
+    model.to(device)
+
+    mlflow.set_tracking_uri(
+        os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
     )
-    model_int8.eval()
-    acc_int8, batch_ms_int8, img_ms_int8 = run_inference(
-        model_int8, val_loader, cpu, "Quantized int8 (CPU)")
+    mlflow.set_experiment("custom_model_inference")
 
-    # Side-by-side comparison
-    print(f"\n{'='*55}")
-    print("  Comparison")
-    print(f"{'='*55}")
-    print(f"  {'':25s} {'fp32':>10} {'int8':>10}  {'diff':>10}")
-    print(f"  {'-'*55}")
-    print(f"  {'Accuracy (%)':25s} {acc_fp32:>10.2f} {acc_int8:>10.2f}"
-          f"  {acc_int8-acc_fp32:>+10.2f}")
-    print(f"  {'Avg batch latency (ms)':25s} {batch_ms_fp32:>10.1f} {batch_ms_int8:>10.1f}"
-          f"  {batch_ms_int8-batch_ms_fp32:>+10.1f}")
-    print(f"  {'Avg per-image (ms)':25s} {img_ms_fp32:>10.2f} {img_ms_int8:>10.2f}"
-          f"  {img_ms_int8-img_ms_fp32:>+10.2f}")
-    print(f"\n  Note: fp32 runs on {cuda}, int8 runs on CPU.")
-    print(f"{'='*55}\n")
+    all_detections = []
+    total_time_ms = 0.0
 
-    if use_carbon:
-        tracker.epoch_end()
-        tracker.stop()
-        print(f"Carbon footprint log saved to: {carbon_log}")
+    print(f"\nRunning inference on {len(image_paths)} images (batch_size={batch_size})\n")
+
+    with mlflow.start_run(run_name="batch_inference"):
+        mlflow.log_params({
+            "num_images": len(image_paths),
+            "batch_size": batch_size,
+            "conf_threshold": conf_threshold,
+            "device": str(device),
+        })
+
+        for i in range(0, len(image_paths), batch_size):
+            batch_paths = image_paths[i:i + batch_size]
+            batch_tensor = preprocess_images(batch_paths).to(device)
+
+            start = time.perf_counter()
+            with torch.no_grad():
+                pred_logits, pred_boxes = model(batch_tensor)
+            elapsed_ms = (time.perf_counter() - start) * 1000
+
+            detections = postprocess(
+                pred_logits.cpu(), pred_boxes.cpu(), conf_threshold
+            )
+            all_detections.extend(detections)
+            total_time_ms += elapsed_ms
+
+            throughput = len(batch_paths) / (elapsed_ms / 1000)
+            print(f"Batch {i // batch_size + 1}: "
+                  f"{len(batch_paths)} images | "
+                  f"{elapsed_ms:.1f} ms | "
+                  f"{throughput:.1f} img/s")
+            for path, dets in zip(batch_paths, detections):
+                print(f"  {os.path.basename(path)}: {len(dets)} detection(s)")
+
+        total_detections = sum(len(d) for d in all_detections)
+        avg_ms = total_time_ms / len(image_paths)
+        print(f"\nTotal detections : {total_detections}")
+        print(f"Avg time/image   : {avg_ms:.1f} ms")
+        print(f"Total time       : {total_time_ms:.1f} ms")
+
+        mlflow.log_metrics({
+            "total_detections": float(total_detections),
+            "avg_detections_per_image": total_detections / len(image_paths),
+            "avg_inference_time_ms": avg_ms,
+            "total_inference_time_ms": total_time_ms,
+        })
 
 
 if __name__ == "__main__":
-    start_inference()
+    run_batch_inference(get_image_paths(), batch_size=8, conf_threshold=0.5)
