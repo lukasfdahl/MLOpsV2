@@ -20,7 +20,7 @@ training:
   learning_rate: 0.00225
   weight_decay: 0.0005
   multi_gpu: 2         # Number of GPUs to use (1 = single GPU, 2+ = DDP)
-  zero_stage: 0         # DeepSpeed ZeRO stage (0 = off, 1/2/3 = increasing VRAM savings)
+  zero_stage: 1         # DeepSpeed ZeRO stage (0 = off, 1/2/3 = increasing VRAM savings)
   use_amp: False         # Automatic Mixed Precision (toggle for benchmarking)
   early_stopping_patience: 15
   warmup_epochs: 5

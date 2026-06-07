@@ -16,8 +16,6 @@
 mlflow.db
 mlruns/
 
-# ignre vscode
-.vscode/
 
 # Python
 __pycache__/

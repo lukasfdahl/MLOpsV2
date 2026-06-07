@@ -198,7 +198,8 @@ pipeline {
             }
         }
 
-        stage("Model Training Run") {
+        stage("Start Monitoring Stack") {
+            when { expression { return params.RUN_MONITORING } }
             steps {
                 echo "Refreshing model pointer, pulling model from DVC, and starting monitoring stack"
 
@@ -344,20 +345,6 @@ pipeline {
                     docker logs --tail 25 mlops-mlflow 2>&1 | sed 's/^/[mlflow] /' || true
                     echo "=== end MLflow diagnostics ==="
                 """
-            }
-        }
-
-        stage("Evaluate and Register Model") {
-            steps {
-                echo "Evaluating model and registering if criteria met"
-                sh "docker run --rm -v ${WORKSPACE}/data:/app/data mlops-kls-container:${env.BUILD_ID} python src/evaluate.py"
-            }
-        }
-
-        stage("Deploy Model") {
-            steps {
-                echo "Deploying model to Production"
-                sh "docker run --rm -v ${WORKSPACE}/data:/app/data mlops-kls-container:${env.BUILD_ID} python src/deploy.py"
             }
         }
     }
