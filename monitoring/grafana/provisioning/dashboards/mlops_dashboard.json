@@ -1,0 +1,172 @@
+{
+  "title": "MLOps Inference Monitoring",
+  "uid": "mlops-inference",
+  "schemaVersion": 36,
+  "version": 2,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate (req/s)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [{
+        "expr": "rate(inference_requests_total[1m])",
+        "legendFormat": "{{status}}"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "Inference Latency (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, rate(inference_latency_seconds_bucket[1m]))", "legendFormat": "p50"},
+        {"expr": "histogram_quantile(0.95, rate(inference_latency_seconds_bucket[1m]))", "legendFormat": "p95"},
+        {"expr": "histogram_quantile(0.99, rate(inference_latency_seconds_bucket[1m]))", "legendFormat": "p99"}
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Prediction Confidence (median)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+      "targets": [{
+        "expr": "histogram_quantile(0.50, rate(prediction_confidence_bucket[1m]))",
+        "legendFormat": "median confidence"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "Model Loaded",
+      "type": "stat",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "targets": [{"expr": "model_loaded", "legendFormat": "loaded"}],
+      "options": {
+        "colorMode": "background",
+        "thresholds": {
+          "steps": [
+            {"color": "red", "value": 0},
+            {"color": "green", "value": 1}
+          ]
+        }
+      }
+    },
+
+    {
+      "id": 10,
+      "title": "Total Images Requested",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 16, "w": 6, "h": 4},
+      "options": {"colorMode": "value", "graphMode": "none"},
+      "targets": [{"expr": "sum(inference_requests_total)", "legendFormat": "total", "instant": true}]
+    },
+    {
+      "id": 11,
+      "title": "Images Tested (selected range)",
+      "type": "stat",
+      "gridPos": {"x": 6, "y": 16, "w": 6, "h": 4},
+      "options": {"colorMode": "value", "graphMode": "none"},
+      "targets": [{"expr": "sum(increase(inference_requests_total[$__range]))", "legendFormat": "in range", "instant": true}]
+    },
+    {
+      "id": 12,
+      "title": "Error Rate (%)",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 20, "w": 6, "h": 4},
+      "fieldConfig": {"defaults": {"unit": "percent", "thresholds": {"steps": [
+        {"color": "green", "value": 0}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}
+      ]}}, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "none"},
+      "targets": [{"expr": "100 * sum(inference_requests_total{status=\"error\"}) / clamp_min(sum(inference_requests_total), 1)", "instant": true}]
+    },
+    {
+      "id": 13,
+      "title": "Dataset Drift Detected",
+      "type": "stat",
+      "gridPos": {"x": 6, "y": 20, "w": 6, "h": 4},
+      "fieldConfig": {"defaults": {"mappings": [
+        {"type": "value", "options": {"0": {"text": "NO", "color": "green"}, "1": {"text": "YES", "color": "red"}}}
+      ], "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "none"},
+      "targets": [{"expr": "drift_dataset_detected", "instant": true}]
+    },
+    {
+      "id": 14,
+      "title": "Error Rate (req/s)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "rate(inference_requests_total{status=\"success\"}[1m])", "legendFormat": "success"},
+        {"expr": "rate(inference_requests_total{status=\"error\"}[1m])", "legendFormat": "error"}
+      ]
+    },
+
+    {
+      "id": 20,
+      "title": "Inference Latency Heatmap",
+      "type": "heatmap",
+      "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8},
+      "options": {"calculate": false, "cellGap": 1, "color": {"scheme": "Spectral", "mode": "scheme"}, "yAxis": {"unit": "s"}},
+      "targets": [{
+        "expr": "sum(rate(inference_latency_seconds_bucket[1m])) by (le)",
+        "format": "heatmap",
+        "legendFormat": "{{le}}"
+      }]
+    },
+    {
+      "id": 21,
+      "title": "Prediction Confidence Heatmap",
+      "type": "heatmap",
+      "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8},
+      "options": {"calculate": false, "cellGap": 1, "color": {"scheme": "Spectral", "mode": "scheme"}, "yAxis": {"unit": "percentunit"}},
+      "targets": [{
+        "expr": "sum(rate(prediction_confidence_bucket[1m])) by (le)",
+        "format": "heatmap",
+        "legendFormat": "{{le}}"
+      }]
+    },
+
+    {
+      "id": 30,
+      "title": "Data Drift — KS statistic per feature",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 32, "w": 12, "h": 8},
+      "description": "KS statistic per RGB feature from the latest drift report (drift.py). Higher = more drift.",
+      "targets": [{"expr": "drift_feature_ks_stat", "legendFormat": "{{feature}}"}]
+    },
+    {
+      "id": 31,
+      "title": "Features Drifted",
+      "type": "gauge",
+      "gridPos": {"x": 12, "y": 32, "w": 6, "h": 8},
+      "fieldConfig": {"defaults": {"min": 0, "max": 6, "thresholds": {"steps": [
+        {"color": "green", "value": 0}, {"color": "yellow", "value": 1}, {"color": "red", "value": 4}
+      ]}}, "overrides": []},
+      "targets": [{"expr": "drift_features_drifted", "instant": true}]
+    },
+    {
+      "id": 32,
+      "title": "Deployed Model — best val_loss",
+      "type": "stat",
+      "gridPos": {"x": 18, "y": 32, "w": 6, "h": 8},
+      "options": {"colorMode": "value", "graphMode": "area"},
+      "targets": [{"expr": "model_card_best_val_loss", "instant": true}]
+    },
+
+    {
+      "id": 40,
+      "title": "Model Card",
+      "type": "table",
+      "gridPos": {"x": 0, "y": 40, "w": 24, "h": 8},
+      "description": "Live from model_card.yaml (updated by deploy.py on each successful run).",
+      "targets": [{"expr": "model_card_info", "instant": true, "format": "table"}],
+      "transformations": [
+        {"id": "labelsToFields", "options": {}},
+        {"id": "organize", "options": {"excludeByName": {"Time": true, "Value": true, "__name__": true, "job": true, "instance": true}}}
+      ]
+    }
+  ]
+}

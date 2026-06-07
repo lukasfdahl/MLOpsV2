@@ -1,0 +1,102 @@
+{
+  "title": "MLOps System & GPU",
+  "uid": "mlops-system",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Host CPU Usage (%)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}, "overrides": []},
+      "targets": [{
+        "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)",
+        "legendFormat": "cpu busy"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "Host Memory Used (%)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}, "overrides": []},
+      "targets": [{
+        "expr": "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))",
+        "legendFormat": "mem used"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Host Network I/O",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "Bps"}, "overrides": []},
+      "targets": [
+        {"expr": "rate(node_network_receive_bytes_total{device!=\"lo\"}[1m])", "legendFormat": "rx {{device}}"},
+        {"expr": "rate(node_network_transmit_bytes_total{device!=\"lo\"}[1m])", "legendFormat": "tx {{device}}"}
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Root Filesystem Used (%)",
+      "type": "stat",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"steps": [
+        {"color": "green", "value": 0}, {"color": "yellow", "value": 75}, {"color": "red", "value": 90}
+      ]}}, "overrides": []},
+      "options": {"colorMode": "background"},
+      "targets": [{
+        "expr": "100 * (1 - (node_filesystem_avail_bytes{mountpoint=\"/rootfs\"} / node_filesystem_size_bytes{mountpoint=\"/rootfs\"}))",
+        "instant": true
+      }]
+    },
+    {
+      "id": 5,
+      "title": "Container CPU (cores)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+      "targets": [{
+        "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"mlops-.*\"}[1m])) by (name)",
+        "legendFormat": "{{name}}"
+      }]
+    },
+    {
+      "id": 6,
+      "title": "Container Memory (bytes)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "targets": [{
+        "expr": "container_memory_usage_bytes{name=~\"mlops-.*\"}",
+        "legendFormat": "{{name}}"
+      }]
+    },
+    {
+      "id": 7,
+      "title": "GPU Utilization (%)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}, "overrides": []},
+      "description": "Requires the DCGM exporter (docker-compose.gpu.yml). 'No data' means it isn't running.",
+      "targets": [{"expr": "DCGM_FI_DEV_GPU_UTIL", "legendFormat": "gpu {{gpu}}"}]
+    },
+    {
+      "id": 8,
+      "title": "GPU Memory Used (MiB)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "decmbytes"}, "overrides": []},
+      "targets": [{"expr": "DCGM_FI_DEV_FB_USED", "legendFormat": "gpu {{gpu}}"}]
+    },
+    {
+      "id": 9,
+      "title": "GPU Temperature (°C)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 32, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "celsius"}, "overrides": []},
+      "targets": [{"expr": "DCGM_FI_DEV_GPU_TEMP", "legendFormat": "gpu {{gpu}}"}]
+    }
+  ]
+}

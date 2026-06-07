@@ -97,7 +97,6 @@ def _denormalise_image(tensor):
     return img.numpy().clip(0, 1)
 
 
-
 # convert yolo bbox to pixel
 def _yolo_to_xyxy(bbox, img_w, img_h):
     single = bbox.dim() == 1
@@ -113,8 +112,6 @@ def _yolo_to_xyxy(bbox, img_w, img_h):
     # save result and return
     result = torch.stack([x1, y1, x2, y2], dim=1)
     return result.squeeze(0) if single else result
-
-
 
 
 # inspect predictions
@@ -142,7 +139,8 @@ def show_predictions(
             for i in range(images.size(0)):
                 t = targets[i]
                 gt_label = t["labels"][0].item() if len(t["labels"]) > 0 else 0
-                gt_box = t["boxes"][0] if len(t["boxes"]) > 0 else torch.zeros(4)
+                gt_box = t["boxes"][0] if len(
+                    t["boxes"]) > 0 else torch.zeros(4)
 
                 collected["images"].append(images[i].cpu())
                 collected["gt_cls"].append(gt_label)
@@ -151,7 +149,8 @@ def show_predictions(
                 logits_i = pred_logits[i]
                 real_scores = logits_i[:, :num_classes]
                 best_query = real_scores.max(dim=1).values.argmax().item()
-                collected["pred_cls"].append(real_scores[best_query].argmax().item())
+                collected["pred_cls"].append(
+                    real_scores[best_query].argmax().item())
                 collected["pred_bbox"].append(pred_boxes[i, best_query].cpu())
 
                 if len(collected["images"]) >= num_examples:
@@ -223,9 +222,11 @@ def show_predictions(
 
     legend_elements = [
         Line2D([0], [0], color="pink", linewidth=2, label="Ground truth"),
-        Line2D([0], [0], color="blue", linewidth=2, linestyle="--", label="Predicted"),
+        Line2D([0], [0], color="blue", linewidth=2,
+               linestyle="--", label="Predicted"),
     ]
-    fig.legend(handles=legend_elements, loc="lower center", ncol=2, fontsize=10)
+    fig.legend(handles=legend_elements,
+               loc="lower center", ncol=2, fontsize=10)
     plt.tight_layout(rect=(0, 0.04, 1, 1))
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close()

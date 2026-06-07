@@ -1,0 +1,53 @@
+# Model Card — CustomCNN Object Detection
+# Updated automatically by the MLOps pipeline on each successful training run.
+# See: https://arxiv.org/abs/1810.03993 for the model card framework.
+
+model_details:
+  name: CustomCNN
+  version: "1.0"
+  type: Object Detection (classification + bounding-box regression)
+  architecture: Custom CNN backbone with dual detection heads (class logits + bbox regression)
+  framework: PyTorch
+  contact: MLOps-KLS group (AAU)
+
+intended_use:
+  primary_use: Multi-class object detection on COCO-style image datasets
+  intended_users: Research / course project
+  out_of_scope:
+    - Production safety-critical systems
+    - Medical or forensic applications
+
+training_data:
+  dataset: COCO128 (small) / full COCO subset via DVC
+  preprocessing: Resize to 64x64, normalize to [0,1]
+  train_val_split: "80/20"
+
+evaluation:
+  metrics:
+    - val_loss (combined classification + bounding-box loss)
+    - val_acc (classification accuracy on detected objects)
+  deployment_threshold:
+    val_loss: 10.0  # Threshold
+
+performance:
+  # Filled in automatically by deploy.py at the end of each pipeline run
+  best_val_loss: null
+  best_val_acc: null
+  run_id: null
+  trained_at: null
+
+training_pipeline:
+  optimizer: Adam
+  scheduler: LinearLR warmup → ReduceLROnPlateau
+  amp: true
+  distributed: DDP (torchrun) + DeepSpeed ZeRO
+  carbon_tracking: CarbonTracker (GPU)
+  experiment_tracking: MLflow
+
+ethical_considerations:
+  - Model trained on COCO data which may contain biased scene representation
+  - Not validated for deployment outside research context
+
+caveats:
+  - Bounding-box accuracy not measured with mAP (classification accuracy used as proxy)
+  - Training on small COCO subset may limit generalisation

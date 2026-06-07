@@ -3,8 +3,17 @@
     FROM python:3.10-slim
     WORKDIR /app
 
+    # install git to clone the repo, and cleanup apt cache to reduce image size
+    RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+    
     COPY docker/docker-requirements.txt .
     RUN pip install --no-cache-dir -r docker-requirements.txt
+
+    # dvc intregation
+    RUN pip install dvc[webdav]
+    # Store DVC credentials as env vars (set at runtime, not baked in)
+    ENV DVC_REMOTE_USER=""
+    ENV DVC_REMOTE_PASSWORD=""
 
     # Copy the project code (except the stuff listed in the .dockerignore)
     COPY . .

@@ -1,0 +1,81 @@
+services:
+
+  inference-api:
+    image: kaspersiebrands/mlops-kls-container:latest
+    container_name: mlops-inference-api
+    command: uvicorn src.serve:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./runs:/app/runs          # model checkpoint + drift report
+      - ./config:/app/config      # config files
+      - ./src:/app/src            # source (for dev; remove in prod)
+      - ./model_card.yaml:/app/model_card.yaml   # surfaced as model_card_* metrics
+    environment:
+      - MODEL_CHECKPOINT=runs/models/best_model.pth
+      - MODEL_CARD_PATH=model_card.yaml
+    working_dir: /app
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mlops-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    depends_on:
+      - inference-api
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mlops-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+
+  # MLflow tracking UI (port 5000)
+  # stage rsyncs from AI-LAB. Shows runs, params, metrics and the model registry.
+  mlflow:
+    image: kaspersiebrands/mlops-kls-container:latest
+    container_name: mlops-mlflow
+    restart: unless-stopped
+    command: ["sh", "-c", "cp -f /app/mlflow.db /tmp/mlflow.db 2>/dev/null || true; mlflow db upgrade sqlite:////tmp/mlflow.db 2>/dev/null || true; mlflow server --backend-store-uri sqlite:////tmp/mlflow.db --host 0.0.0.0 --port 5000 --allowed-hosts '*' --cors-allowed-origins '*'"]
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./mlruns:/app/mlruns
+    working_dir: /app
+
+  # Simple browser UI to upload images and view predictions (port 8501).
+  inference-ui:
+    image: kaspersiebrands/mlops-kls-container:latest
+    container_name: mlops-inference-ui
+    restart: unless-stopped
+    command: streamlit run src/ui.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./src:/app/src
+    environment:
+      - API_URL=http://inference-api:8000
+    working_dir: /app
+    depends_on:
+      - inference-api
+
+# All monitoring services share one named network so the system/GPU exporter
+# compose files (and the drift container) can resolve services by name.
+networks:
+  default:
+    name: mlops-monitoring

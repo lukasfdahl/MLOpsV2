@@ -1,0 +1,6 @@
+[core]
+    remote = casaremote
+['remote "casaremote"']
+    url = webdavs://dvc.lukasfdahl.com/
+    jobs = 2
+    timeout = 300

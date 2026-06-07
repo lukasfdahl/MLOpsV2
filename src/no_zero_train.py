@@ -1,6 +1,5 @@
 # train.py
 import os
-import time
 import torch
 import torch.optim as optim
 import torch.distributed as dist
@@ -15,7 +14,6 @@ from utility.training import plot_training_curves, log_gpu_metrics, detection_lo
 from utility.testing import show_predictions
 from utility.hardware import check_device
 from carbontracker.tracker import CarbonTracker
-import deepspeed
 from tqdm import tqdm
 
 # Training hyperparameters from config
@@ -25,7 +23,6 @@ LEARNING_RATE = config["training"]["learning_rate"]
 WEIGHT_DECAY = config["training"]["weight_decay"]
 NUM_GPUS = config["training"].get("multi_gpu", 1)
 NUM_WORKERS = config["dataloader"].get("num_workers", 4)
-ZERO_STAGE = config["training"].get("zero_stage", 0)
 EARLY_STOPPING_PATIENCE = config["training"].get("early_stopping_patience", 10)
 WARMUP_EPOCHS = config["training"].get("warmup_epochs", 5)
 
@@ -49,37 +46,20 @@ def _run_one_epoch_train(model, train_loader, optimizer, scaler, device, use_amp
 
     for images, targets in pbar:
         images = images.to(device)
-
-        # When DeepSpeed fp16 is active the model weights are HalfTensor.
-        # DeepSpeed does NOT cast inputs automatically, so we do it here.
-        # For standard AMP (ZeRO=0) use_amp is True but model stays float32,
-        # so we only cast when the model's parameters are already fp16.
-        param = next(model.parameters())
-        if param.dtype == torch.float16:
-            images = images.half()
-        elif param.dtype == torch.bfloat16:
-            images = images.to(torch.bfloat16)
+        optimizer.zero_grad()
 
         # Automatic Mixed Precision (AMP) forward pass
-        # (torch.autocast is a no-op inside DeepSpeed; DS handles mp internally)
-        ds_mixed = param.dtype in (torch.float16, torch.bfloat16)
-        with torch.autocast(device_type=device_type, enabled=use_amp and not ds_mixed):
+        with torch.autocast(device_type=device_type, enabled=use_amp):
             pred_logits, pred_boxes = model(images)
             loss, metrics = detection_loss_set(
                 pred_logits, pred_boxes, targets,
                 num_classes=model.module.num_classes if hasattr(model, "module") else model.num_classes
             )
 
-        # Backward + optimizer step
-        # DeepSpeed manages its own gradient scaling when bf16/fp16 is active —
-        # use model.backward() / model.step() in that case.
-        if ds_mixed and hasattr(model, "backward"):
-            model.backward(loss)
-            model.step()
-        else:
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+        # AMP backwards pass
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
         bs = images.size(0)
         train_loss += loss.item() * bs
@@ -105,15 +85,7 @@ def _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main):
         for images, targets in pbar:
             images = images.to(device)
 
-            param = next(model.parameters())
-
-            if param.dtype == torch.float16:
-                images = images.half()
-            elif param.dtype == torch.bfloat16:
-                images = images.to(torch.bfloat16)
-
-            ds_mixed = param.dtype in (torch.float16, torch.bfloat16)
-            with torch.autocast(device_type=device_type, enabled=use_amp and not ds_mixed):
+            with torch.autocast(device_type=device_type, enabled=use_amp):
                 pred_logits, pred_boxes = model(images)
                 loss, metrics = detection_loss_set(
                     pred_logits, pred_boxes, targets,
@@ -143,7 +115,7 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
         world_size = int(os.environ.get("WORLD_SIZE", 1))
 
     # Allow fine-tuning phase to override key hyperparams without changing config
-    global EPOCHS, LEARNING_RATE, WARMUP_EPOCHS, ZERO_STAGE
+    global EPOCHS, LEARNING_RATE, WARMUP_EPOCHS
     if override_epochs  is not None: EPOCHS        = override_epochs
     if override_lr      is not None: LEARNING_RATE = override_lr
     if override_warmup  is not None: WARMUP_EPOCHS = override_warmup
@@ -159,7 +131,7 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # AMP scaler
-    use_amp = torch.cuda.is_available() and config["training"].get("use_amp", True)
+    use_amp = torch.cuda.is_available()
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     is_main = _is_main_process()
@@ -178,7 +150,6 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
             "optimizer": "Adam", "scheduler": "ReduceLROnPlateau",
             "loss_cls": "CrossEntropy", "loss_bbox": "SmoothL1",
             "num_gpus": world_size, "amp": use_amp,
-            "zero_stage": ZERO_STAGE,
         })
 
     # Config decides which dataset path to use, dataloader figures out the format
@@ -201,84 +172,26 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
     # Build model and move to device
     model = CustomCNN(num_classes=num_classes).to(device)
 
-    # Optional fine-tune init: if FINETUNE_CHECKPOINT is set (e.g. by the
-    # post-training pruning step), start from those weights instead of from
-    # scratch. Normal training leaves this unset and is unaffected.
-    _init_ckpt = os.environ.get("FINETUNE_CHECKPOINT")
-    if _init_ckpt and os.path.isfile(_init_ckpt):
-        _sd = torch.load(_init_ckpt, map_location=device)
-        model.load_state_dict(_sd["model_state"] if "model_state" in _sd else _sd)
-        if is_main:
-            print(f"Fine-tuning: loaded initial weights from {_init_ckpt}")
-
     # Print model summary only on rank 0
     if is_main:
         summary_device = "cuda" if str(device).startswith("cuda") else "cpu"
         print("\nModel summary:")
         summary(model.to(summary_device), (3, 64, 64), device=summary_device)
         model.to(device)
-    """
-    ZeRO optimizer via DeepSpeed (stages 1, 2, 3)
-    ZeRO stage 0 = disabled (standard DDP or single GPU)
-    ZeRO stage 1 = partition optimizer states across GPUs
-    ZeRO stage 2 = also partition gradients
-    ZeRO stage 3 = also partition model parameters
-    """
-    
-    if ZERO_STAGE > 0:
-        try:
-            ds_config = {
-                "train_micro_batch_size_per_gpu": BATCH_SIZE,
-                "optimizer": {
-                    "type": "Adam",
-                    "params": {"lr": LEARNING_RATE, "weight_decay": WEIGHT_DECAY}
-                },
-                "bf16": {"enabled": use_amp},  # bf16 is more stable than fp16 on L4 (Ada arch)
-                "zero_optimization": {"stage": ZERO_STAGE},
-                # Built-in warmup
-                # DeepSpeedZeroOptimizer. Steps-per-epoch is approximate (~100);
-                # good enough for warmup and avoids needing a steps_per_epoch calc.
-                "scheduler": {
-                    "type": "WarmupLR",
-                    "params": {
-                        "warmup_min_lr": LEARNING_RATE * 0.1,
-                        "warmup_max_lr": LEARNING_RATE,
-                        "warmup_num_steps": WARMUP_EPOCHS * 100,
-                    }
-                },
-            }
-            model, optimizer, _, _ = deepspeed.initialize(
-                model=model, config=ds_config
-            )
-            # DeepSpeed wraps the optimizer — PyTorch schedulers don't accept it.
-            # LR warmup is handled by DeepSpeed's built-in WarmupLR scheduler
-            # declared in ds_config above. Set to None so the epoch loop skips them.
-            warmup_scheduler = None
-            plateau_scheduler = None
-            if is_main:
-                print(f"DeepSpeed ZeRO stage {ZERO_STAGE} enabled")
-        except ImportError:
-            if is_main:
-                print("DeepSpeed not available, falling back to standard DDP/single GPU")
-            # Fall through to standard optimizer setup below
-            ZERO_STAGE = 0
+    if is_ddp:
+        # DDP wraps the model — gradients are averaged across GPUs automatically
+        model = DDP(model, device_ids=[rank])
+        if is_main:
+            print(f"DDP enabled across {world_size} GPUs")
 
-    # Standard DDP wrap (when not using DeepSpeed)
-    if ZERO_STAGE == 0:
-        if is_ddp:
-            # DDP wraps the model — gradients are averaged across GPUs automatically
-            model = DDP(model, device_ids=[rank])
-            if is_main:
-                print(f"DDP enabled across {world_size} GPUs")
-
-        # optim and scheduler setup
-        optimizer = optim.Adam(
-            model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-        # Linear warmup for first WARMUP_EPOCHS, then hand off to ReduceLROnPlateau
-        warmup_scheduler = optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=0.1, end_factor=1.0, total_iters=WARMUP_EPOCHS)
-        plateau_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", factor=0.5, patience=3)
+    # optim and scheduler setup
+    optimizer = optim.Adam(
+        model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+    # Linear warmup for first WARMUP_EPOCHS, then hand off to ReduceLROnPlateau
+    warmup_scheduler = optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=0.1, end_factor=1.0, total_iters=WARMUP_EPOCHS)
+    plateau_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.5, patience=3)
 
     # Train the model
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
@@ -289,7 +202,6 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
         print(f"\nTraining for {EPOCHS} epochs on {device} "
               f"({'DDP x' + str(world_size) + ' GPUs' if is_ddp else 'single GPU'}, "
               f"AMP={'on' if use_amp else 'off'}, "
-              f"ZeRO={ZERO_STAGE if ZERO_STAGE > 0 else 'off'}, "
               f"warmup={WARMUP_EPOCHS} epochs, "
               f"early_stopping={EARLY_STOPPING_PATIENCE} epochs)...\n")
 
@@ -311,11 +223,6 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
     epoch_bar = tqdm(range(1, EPOCHS + 1), desc="Training", disable=not is_main)
     for epoch in epoch_bar:
 
-        # Per-epoch timing + reset VRAM peak so we can report each epoch's max usage.
-        _t_epoch = time.perf_counter()
-        if torch.cuda.is_available():
-            torch.cuda.reset_peak_memory_stats(device)
-
         # start tracking carbon for this epoch
         if carbon_available:
             tracker.epoch_start()
@@ -331,25 +238,13 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
         # Validation
         val_loss, val_acc = _run_one_epoch_val(model, val_loader, device, use_amp, epoch, is_main)
 
-        # --- Per-epoch benchmark line for the AMP / ZeRO / multi-GPU experiments.
-        # Printed on every rank, so VRAM is reported per GPU. Grep the SLURM log for [BENCH].
-        _epoch_time = time.perf_counter() - _t_epoch
-        _peak_vram_mb = (torch.cuda.max_memory_allocated(device) / 1024**2) if torch.cuda.is_available() else 0.0
-        print(f"[BENCH] epoch={epoch} rank={rank if rank is not None else 0} "
-              f"gpus={world_size} amp={use_amp} zero={ZERO_STAGE} "
-              f"time={_epoch_time:.1f}s peak_vram={_peak_vram_mb:.0f}MB", flush=True)
-
-        # Warmup for first N epochs, then ReduceLROnPlateau takes over.
-        # When ZeRO > 0 both schedulers are None (DeepSpeed handles LR internally).
+        # Warmup for first N epochs, then ReduceLROnPlateau takes over
         if warmup_scheduler is not None and plateau_scheduler is not None:
             if epoch <= WARMUP_EPOCHS:
                 warmup_scheduler.step()
             else:
                 plateau_scheduler.step(val_loss)
-        try:
-            current_lr = optimizer.param_groups[0]["lr"]
-        except (AttributeError, IndexError):
-            current_lr = LEARNING_RATE  # DeepSpeed optimizer may not expose param_groups
+        current_lr = optimizer.param_groups[0]["lr"]
 
         # log metrics to MLflow — only on rank 0
         if is_main:
@@ -375,7 +270,7 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
         # save best model based on val_loss, and also save last model each epoch
         # Only rank 0 saves models to avoid file conflicts
         if is_main:
-            # Unwrap DDP/DeepSpeed model for saving
+        # Unwrap DDP model for saving
             model_state = model.module.state_dict() if hasattr(model, "module") else model.state_dict()
 
             if val_loss < best_val_loss:
@@ -431,9 +326,8 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
             mlflow.log_artifacts(carbon_log, name="carbontracker")
             print("Carbon footprint logged to MLflow")
 
-        # Register model in MLflow model registry if it meets performance criteria
         # Build a clean CPU model from the saved checkpoint — avoids pickling
-        # the DeepSpeed/DDP process group which MLflow cannot serialize.
+        # the DDP process group which MLflow cannot serialize.
         model_to_log = CustomCNN(num_classes=num_classes)
         _ckpt = torch.load(os.path.join(models_path, "best_model.pth"), map_location="cpu")
         model_to_log.load_state_dict(_ckpt["model_state"])
@@ -442,12 +336,6 @@ def train_model(rank=None, world_size=None, override_epochs=None, override_lr=No
         # Generate prediction examples on val set and log to MLflow
         pred_img_path = os.path.join(config["path"]["run_base_dir"], "predictions.png")
 
-        # predic visual
-        # DeepSpeed casts model params to bf16 when AMP is on, but show_predictions
-        # feeds fp32 images -> dtype mismatch in the conv layers. autocast casts the
-        # fp32 inputs to match the bf16 weights; it's a harmless no-op when the model
-        # is fp32 (e.g. CPU / ZeRO stage 0) since enabled is gated on CUDA.
-        # model_to_log is a clean CPU model — run predictions on CPU
         show_predictions(model_to_log, val_loader, torch.device("cpu"), save_path=pred_img_path)
         mlflow.log_artifact(pred_img_path)
         print("Prediction examples logged to MLflow")

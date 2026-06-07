@@ -4,11 +4,11 @@ import matplotlib.pyplot as plt
 import subprocess
 from typing import Union
 import mlflow
-from config import config
 
 
 def log_gpu_metrics(device: Union[torch.device, str], step: int):
-    device_type = device.type if isinstance(device, torch.device) else str(device)
+    device_type = device.type if isinstance(
+        device, torch.device) else str(device)
     if device_type == "cuda":
         try:
             out = subprocess.check_output(
@@ -29,11 +29,14 @@ def log_gpu_metrics(device: Union[torch.device, str], step: int):
     elif device_type == "mps":
         try:
             alloc = torch.mps.current_allocated_memory()
-            mlflow.log_metric("mps_allocated_mb", float(alloc) / (1024**2), step=step)
+            mlflow.log_metric("mps_allocated_mb", float(
+                alloc) / (1024**2), step=step)
         except Exception:
             pass
 
 # trainnig and val curves — returns fig so caller can log with mlflow.log_figure
+
+
 def plot_training_curves(history: dict):
     epochs = range(1, len(history["train_loss"]) + 1)
 
@@ -42,7 +45,8 @@ def plot_training_curves(history: dict):
     # loss
     ax = axes[0]
     ax.plot(epochs, history["train_loss"], label="Train loss", linewidth=2)
-    ax.plot(epochs, history["val_loss"], label="Val loss", linewidth=2, linestyle="--")
+    ax.plot(epochs, history["val_loss"],
+            label="Val loss", linewidth=2, linestyle="--")
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
     ax.set_title("Loss over epochs")
@@ -52,7 +56,8 @@ def plot_training_curves(history: dict):
     # accuracy
     ax = axes[1]
     ax.plot(epochs, history["train_acc"], label="Train acc", linewidth=2)
-    ax.plot(epochs, history["val_acc"], label="Val acc", linewidth=2, linestyle="--")
+    ax.plot(epochs, history["val_acc"],
+            label="Val acc", linewidth=2, linestyle="--")
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Accuracy (%)")
     ax.set_title("Classification accuracy over epochs")
@@ -113,6 +118,10 @@ def detection_loss_set(
     pred_boxes:  [B,K,4]
     targets: list of dicts with "labels":[N], "boxes":[N,4]
     """
+    # Cast to float32 — loss ops (cross_entropy, cdist) don't support BFloat16
+    pred_logits = pred_logits.float()
+    pred_boxes  = pred_boxes.float()
+
     device = pred_logits.device
     B, K, Cp1 = pred_logits.shape
     noobj = num_classes  # index of no-object class

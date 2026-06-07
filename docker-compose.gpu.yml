@@ -1,0 +1,22 @@
+services:
+
+  dcgm-exporter:
+    image: nvidia/dcgm-exporter:latest
+    container_name: mlops-dcgm-exporter
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    name: mlops-monitoring
+    external: true
